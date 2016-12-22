@@ -145,3 +145,11 @@ secrets.json
 .DS_Store
 
 *.egg-info
+
+# ssl certificate files
+certs/
+ssl/
+*.pem
+*.crt
+*.key
+

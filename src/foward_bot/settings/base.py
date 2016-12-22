@@ -37,10 +37,10 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
-    'permabots',
     'rest_framework',
     'rest_framework.authtoken',
-    
+
+    'foward_bot.telegram_API',
     'foward_bot.fowarder'
 ]
 
@@ -94,6 +94,14 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
+
+# Django Telegram Bot settings
+
+TELEGRAM_BOT = [{
+    'token': '297704876:AAHiEy-slaktdaSMJfZtcnoDC-4HQYYDNOs',
+    'register': 'foward_bot.fowarder.dispatcher.register',
+    'webhook': 'https://bots.ken-dev.info/telegram_webhook/%s'
+}]
 
 # Internationalization
 # https://docs.djangoproject.com/en/1.9/topics/i18n/

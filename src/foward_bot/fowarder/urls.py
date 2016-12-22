@@ -19,11 +19,9 @@ Including another URLconf
     3. Add a URL to urlpatterns:  url(r'^blog/', include(blog_urls))
 """
 from django.conf.urls import url, include
+from .views import TelegramView
 
 
 urlpatterns = [
-    url(r'^processing/', include('permabots.urls_processing', namespace="permabots")),
-
-    # API
-    url(r'^api/v1/', include('permabots.urls_api', namespace="api")),
+    url(r'^(?P<token>[-_:a-zA-Z0-9]+)/$', TelegramView.as_view(), name='telegram_webhook')
 ]

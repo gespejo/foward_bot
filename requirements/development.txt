@@ -1,2 +1,3 @@
 -r base.txt
 django-sslserver==0.19
+django-telegrambot==0.2.4
