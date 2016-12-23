@@ -22,5 +22,5 @@ from django.conf.urls import url, include
 from .views import TelegramView
 
 urlpatterns = [
-    url(r'^(?P<token>[-_:a-zA-Z0-9]+)/$', TelegramView.as_view(), name='telegram_webhook'),
+    url(r'^(?P<token>[-_:\w\d]+)/$', TelegramView.as_view()),
 ]

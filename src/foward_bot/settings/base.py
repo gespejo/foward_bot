@@ -40,8 +40,8 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework.authtoken',
 
+    'foward_bot.fowarder',
     'foward_bot.telegram_API',
-    'foward_bot.fowarder'
 ]
 
 MIDDLEWARE_CLASSES = [

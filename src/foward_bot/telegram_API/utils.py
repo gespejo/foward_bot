@@ -61,7 +61,10 @@ def register_webhooks(bot_index):
                 current_site = Site.objects.get_current()
                 url = 'https://' + current_site.domain + webhook
 
-            bot.set_webhook(url)
+            cert = None
+            if 'cert' in bot_config:
+                cert = bot_config['cert']
+            bot.set_webhook(webhook_url=url, certificate=cert)
             dispatcher = DjangoDispatcher(bot)
             register = import_string(bot_config['register'])
             register(dispatcher)

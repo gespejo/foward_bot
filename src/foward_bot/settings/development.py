@@ -18,6 +18,7 @@ MICROBOT_WEBHOOK_DOMAIN = "https://ken-dev.ngrok.io"
 
 INSTALLED_APPS.append("sslserver")
 
+APPEND_SLASH = False
 
 DATABASES = {
     'default': {

@@ -21,7 +21,9 @@ Including another URLconf
 from django.conf.urls import url, include
 from django.contrib import admin
 
+
+
 urlpatterns = [
     url(r'^admin/', admin.site.urls),
-    url(r'^telegram_webhook/', include('foward_bot.fowarder.urls', namespace='fowarder'))
+    url(r'^fowarder/', include('foward_bot.fowarder.urls', namespace='fowarder'))
 ]

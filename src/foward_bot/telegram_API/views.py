@@ -2,31 +2,36 @@
 from __future__ import unicode_literals
 
 import json
+import logging
 
 from telegram import Bot as APIBot
 from telegram import Update
 
 from django.http import HttpResponse
-from django.views import generic
 from django.utils.module_loading import import_string
-from django.http.response import Http404
 from django.utils.decorators import method_decorator
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.views import APIView
 from django.views.decorators.csrf import csrf_exempt
 
-from foward_bot.telegram_API.models import Bot
 from .models import Bot
-from .utils import get_or_none, register_webhooks, DjangoDispatcher
+from .serializers import UpdateSerializer
+from .utils import register_webhooks
+
+
+logger = logging.getLogger(__name__)
 
 
 @method_decorator(csrf_exempt, name='dispatch')
-class TelegramView(generic.View):
+class TelegramView(APIView):
 
     bot_index = 0
 
-    @classmethod
-    def as_view(cls, **initkwargs):
-        register_webhooks(bot_index=cls.bot_index)
-        return super(TelegramView, cls).as_view(**initkwargs)
+    # @classmethod
+    # def as_view(cls, **initkwargs):
+    #     register_webhooks(bot_index=cls.bot_index)
+    #     return super(TelegramView, cls).as_view(**initkwargs)
 
     def get(self, request):
         return HttpResponse()
@@ -35,19 +40,15 @@ class TelegramView(generic.View):
         return HttpResponse()
 
     def post(self, request, token):
-        bot = get_or_none(Bot, token=token)
-        if not bot:
-            return Http404()
+        serializer = UpdateSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            try:
+                bot = Bot.objects.get(token=token)
+                bot.handle(Update.de_json(request.data, APIBot(token)))
+            except Bot.DoesNotExist:
+                logger.warning("Token %s not associated to a bot" % token)
+        return Response(serializer.errors, status=status.HTTP_404_NOT_FOUND)
 
-        json_string = request.body.decode('utf-8')
-        update = Update.de_json(json.loads(json_string), APIBot(token))
-        tg_bot = APIBot(token)
-        dispatcher = DjangoDispatcher(tg_bot)
-        register = import_string(bot.register)
-        register(dispatcher)
-        self.on_post(update)
-        dispatcher.process_update(update)
-        return HttpResponse()
 
-    def on_post(self, update):
-        pass
+logging.info("Begin")
