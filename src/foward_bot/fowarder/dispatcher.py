@@ -3,6 +3,7 @@ from __future__ import unicode_literals
 
 
 from telegram.ext import CommandHandler, MessageHandler, Filters
+from foward_bot.services.translator import TranslatorServices, Translator
 
 
 def start(bot, update):
@@ -14,7 +15,10 @@ def help(bot, update):
 
 
 def echo(bot, update):
-    bot.forward_message(update.message.chat_id, update.message.chat_id, update.message.message_id, text="from sender")
+    translator = Translator()
+    # bot.send_message(update.message.chat_id, text='hello')
+    bot.send_message(update.message.chat_id,
+                     text=translator.translate(update.message.text, 'ru', service=TranslatorServices.GOOGLE))
 
 
 def error(bot, update):
@@ -25,5 +29,5 @@ def error(bot, update):
 def register(dispatcher):
     dispatcher.add_handler(CommandHandler('start', start))
     dispatcher.add_handler(CommandHandler('help', help))
-    dispatcher.add_handler(MessageHandler(Filters.all, echo))
+    dispatcher.add_handler(MessageHandler(Filters.text, echo))
     dispatcher.add_error_handler(error)
