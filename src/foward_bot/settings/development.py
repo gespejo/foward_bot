@@ -18,7 +18,9 @@ MICROBOT_WEBHOOK_DOMAIN = "https://ken-dev.ngrok.io"
 
 INSTALLED_APPS.append("sslserver")
 
-APPEND_SLASH = False
+YANDEX_API_KEY = 'trnsl.1.1.20161226T211040Z.9e963380a71a1645.a935c43983b6417a3735c8090caf01401b1a0fbe'
+
+# APPEND_SLASH = False
 
 DATABASES = {
     'default': {

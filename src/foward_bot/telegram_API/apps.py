@@ -4,5 +4,5 @@ from django.apps import AppConfig
 
 
 class TelegramApiConfig(AppConfig):
-    name = 'forward_bot.telegram_API'
+    name = 'foward_bot.telegram_API'
     label = 'telegram_API'

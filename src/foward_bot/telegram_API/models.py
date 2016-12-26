@@ -79,17 +79,16 @@ def set_api(sender, instance, **kwargs):
         instance._bot = APIBot(instance.token)
 
     # set webhook
-    url = None
+    webhook_url = None
     cert = None
     if instance.enabled:
-        webhook = reverse('api_webhook', args={instance.token})
-        # webhook = '/webhook/' + instance.token + '/'
-        url = 'https://' + instance.site.domain + webhook
+        webhook = reverse('telegram_API:webhook', kwargs={'token': instance.token})
+        webhook_url = 'https://' + instance.site.domain + webhook
     if instance.ssl_certificate:
         cert = instance.ssl_certificate.open()
-    instance._bot.setWebhook(webhook_url=url,
+    instance._bot.setWebhook(webhook_url=webhook_url,
                              certificate=cert)
-    logger.info("Success: Webhook url %s for bot %s set" % (url, str(instance)))
+    logger.info("Success: Webhook url %s for bot %s set" % (webhook_url, str(instance)))
 
     #  complete  Bot instance with api data
     # if not instance.user_api:
@@ -148,8 +147,8 @@ class Chat(models.Model):
 
 
 @python_2_unicode_compatible
-class Message(BaseModel):
-    message_id = models.BigIntegerField(_('Id'), db_index=True)  # It is no unique. Only combined with chat and bot
+class Message(models.Model):
+    message_id = models.BigIntegerField(_('Id'), db_index=True, primary_key=True)  # It is no unique. Only combined with chat and bot
     from_user = models.ForeignKey(User, related_name='messages', verbose_name=_("User"))
     date = models.DateTimeField(_('Date'))
     chat = models.ForeignKey(Chat, related_name='messages', verbose_name=_("Chat"))
@@ -175,22 +174,14 @@ class Message(BaseModel):
         return message_dict
 
 
-class Update(BaseModel):
-    bot = models.ForeignKey('Bot', verbose_name=_("Bot"), related_name="updates")
-    update_id = models.BigIntegerField(_('Update Id'), db_index=True)
+class Update(models.Model):
+    update_id = models.BigIntegerField(_('Id'), primary_key=True)
     message = models.ForeignKey(Message, null=True, blank=True, verbose_name=_('Message'),
                                 related_name="updates")
 
     class Meta:
         verbose_name = 'Update'
         verbose_name_plural = 'Updates'
-        unique_together = ('update_id', 'bot')
 
     def __str__(self):
-        return "(%s, %s)" % (self.bot.id, self.update_id)
-
-    def to_dict(self):
-        if self.message:
-            return {'update_id': self.update_id, 'message': self.message.to_dict()}
-        elif self.callback_query:
-            return {'update_id': self.update_id, 'callback_query': self.callback_query.to_dict()}
+        return "%s" % self.update_id

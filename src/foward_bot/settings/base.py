@@ -39,6 +39,7 @@ INSTALLED_APPS = [
 
     'rest_framework',
     'rest_framework.authtoken',
+    'debug_toolbar',
 
     'foward_bot.fowarder',
     'foward_bot.telegram_API',
@@ -49,6 +50,7 @@ MIDDLEWARE_CLASSES = [
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
+    'debug_toolbar.middleware.DebugToolbarMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.auth.middleware.SessionAuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
@@ -105,6 +107,10 @@ TELEGRAM_BOT = [{
 
 # Internationalization
 # https://docs.djangoproject.com/en/1.9/topics/i18n/
+
+# django debugger settings
+
+INTERNAL_IPS = ['127.0.0.1']
 
 LANGUAGE_CODE = 'en-us'
 
