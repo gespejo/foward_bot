@@ -19,6 +19,10 @@ class Translator(object):
         super(Translator, self).__init__()
         self.yandex_api_key = settings.YANDEX_API_KEY
 
+    def detect_lang(self, text):
+        translator = YandexTranslate(self.yandex_api_key)
+        return translator.detect(text)
+
     def translate(self, text, lang_to, lang_from=None,
                   service=TranslatorServices.YANDEX):
 
@@ -30,7 +34,7 @@ class Translator(object):
 
         translator = YandexTranslate(self.yandex_api_key)
         if not lang_from:
-            lang_from = translator.detect(text)
+            lang_from = self.detect_lang(text)
         lang = "{}-{}".format(lang_from, lang_to)
         translated = translator.translate(text, lang)
         return translated['text'][0]
@@ -41,5 +45,3 @@ class Translator(object):
         if not lang_from:
             lang_from = gs.detect(text)
         return gs.translate(text, lang_to, lang_from)
-
-

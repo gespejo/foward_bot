@@ -50,6 +50,8 @@ class Bot(models.Model):
         self._bot = None
         if self.token:
             self._bot = APIBot(str(self.token))
+        self._dispatcher = DjangoDispatcher(self._bot)
+        self.register_handler()
 
     def __str__(self):
         return "%s" % self.token
@@ -57,16 +59,16 @@ class Bot(models.Model):
     def get_me(self):
         return self._bot
 
-    def handle(self, update):
-
-        dispatcher = DjangoDispatcher(self._bot)
+    def register_handler(self):
         register = import_string(self.register)
-        register(dispatcher)
-        dispatcher.process_update(update)
+        register(self._dispatcher)
+
+    def handle(self, update):
+        self._dispatcher.process_update(update)
 
     def send_message(self, chat_id, text, parse_mode=None, disable_web_page_preview=None, **kwargs):
         self._bot.send_message(chat_id=chat_id, text=text, parse_mode=parse_mode,
-                              disable_web_page_preview=disable_web_page_preview, **kwargs)
+                               disable_web_page_preview=disable_web_page_preview, **kwargs)
 
     def foward_message(self, chat_id, from_chat_id, message_id, **kwargs):
         self._bot.forward_message(chat_id=chat_id, from_chat_id=from_chat_id, message_id=message_id, **kwargs)
@@ -88,6 +90,7 @@ def set_api(sender, instance, **kwargs):
         cert = instance.ssl_certificate.open()
     instance._bot.setWebhook(webhook_url=webhook_url,
                              certificate=cert)
+    instance.register_handler()
     logger.info("Success: Webhook url %s for bot %s set" % (webhook_url, str(instance)))
 
     #  complete  Bot instance with api data
@@ -121,19 +124,20 @@ class User(models.Model):
 class Chat(models.Model):
     PRIVATE, GROUP, SUPERGROUP, CHANNEL = 'private', 'group', 'supergroup', 'channel'
 
-    TYPE_CHOICES = (
+    CHAT_TYPE_CHOICES = (
         (PRIVATE, _('Private')),
         (GROUP, _('Group')),
         (SUPERGROUP, _('Supergroup')),
         (CHANNEL, _('Channel')),
     )
 
-    id = models.BigIntegerField(primary_key=True)
-    type = models.CharField(max_length=255, choices=TYPE_CHOICES)
-    title = models.CharField(max_length=255, null=True, blank=True)
-    username = models.CharField(max_length=255, null=True, blank=True)
-    first_name = models.CharField(max_length=255, null=True, blank=True)
-    last_name = models.CharField(max_length=255, null=True, blank=True)
+    id = models.BigIntegerField(_('Id'), primary_key=True)
+    identifier = models.UUIDField(_('Identifier'), default=uuid.uuid4, editable=False)
+    type = models.CharField(_('Type'), max_length=255, choices=CHAT_TYPE_CHOICES)
+    title = models.CharField(_('Title'), max_length=255, null=True, blank=True)
+    username = models.CharField(_('Username'), max_length=255, null=True, blank=True)
+    first_name = models.CharField(_('First Name'), max_length=255, null=True, blank=True)
+    last_name = models.CharField(_('Last Name'), max_length=255, null=True, blank=True)
 
     class Meta:
         verbose_name = _('Chat')
@@ -149,9 +153,9 @@ class Chat(models.Model):
 @python_2_unicode_compatible
 class Message(models.Model):
     message_id = models.BigIntegerField(_('Id'), db_index=True, primary_key=True)  # It is no unique. Only combined with chat and bot
-    from_user = models.ForeignKey(User, related_name='messages', verbose_name=_("User"))
+    from_user = models.ForeignKey(User, related_name='messages', verbose_name=_("User"), null=True)
     date = models.DateTimeField(_('Date'))
-    chat = models.ForeignKey(Chat, related_name='messages', verbose_name=_("Chat"))
+    chat = models.ForeignKey(Chat, related_name='messages', verbose_name=_("Chat"), null=True)
     forward_from = models.ForeignKey(User, null=True, blank=True, related_name='forwarded_from',
                                      verbose_name=_("Forward from"))
     text = models.TextField(null=True, blank=True, verbose_name=_("Text"))
@@ -175,9 +179,16 @@ class Message(models.Model):
 
 
 class Update(models.Model):
+    MESSAGE, CHANNEL_POST = 'message', 'channel_post'
+
+    UPDATE_CHOICES = (
+        (MESSAGE, _('Message')),
+        (CHANNEL_POST, _('Channel_post')),
+    )
     update_id = models.BigIntegerField(_('Id'), primary_key=True)
     message = models.ForeignKey(Message, null=True, blank=True, verbose_name=_('Message'),
                                 related_name="updates")
+    update_type = models.CharField(_('Update Type'), max_length=20, choices=UPDATE_CHOICES, default=MESSAGE)
 
     class Meta:
         verbose_name = 'Update'

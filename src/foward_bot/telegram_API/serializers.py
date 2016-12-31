@@ -56,6 +56,16 @@ class MessageSerializer(serializers.ModelSerializer):
         fields = ('message_id', 'from_', 'date', 'chat', 'text')
 
 
+class ChannelMessageSerializer(serializers.ModelSerializer):
+    message_id = serializers.IntegerField()
+    chat = ChatSerializer(many=False)
+    date = TimestampField()
+
+    class Meta:
+        model = Message
+        fields = ('message_id', 'date', 'chat', 'text')
+
+
 class UpdateSerializer(serializers.ModelSerializer):
 
     update_id = serializers.IntegerField()
@@ -63,7 +73,7 @@ class UpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Update
-        fields = "__all__"
+        fields = ('update_id', 'message')
 
     def create(self, validated_data):
         user, _ = User.objects.get_or_create(id=validated_data['message']['from_user']['id'],
@@ -78,6 +88,31 @@ class UpdateSerializer(serializers.ModelSerializer):
                                                    defaults=defaults)
         update, _ = Update.objects.get_or_create(update_id=validated_data['update_id'],
                                                  defaults={'update_id': validated_data['update_id'],
-                                                 'message': message})
+                                                 'message': message, 'update_type': Update.MESSAGE})
+
+        return update
+
+
+class ChannelUpdateSerializer(serializers.ModelSerializer):
+
+    update_id = serializers.IntegerField()
+    channel_post = ChannelMessageSerializer()
+
+    class Meta:
+        model = Update
+        fields = ('update_id', 'channel_post')
+
+    def create(self, validated_data):
+
+        chat, created = Chat.objects.get_or_create(id=validated_data['channel_post']['chat']['id'],
+                                                   defaults=validated_data['channel_post']['chat'])
+        defaults = validated_data['channel_post'].copy()
+        defaults['chat'] = chat
+
+        message, _ = Message.objects.get_or_create(message_id=validated_data['channel_post']['message_id'],
+                                                   defaults=defaults)
+        update, _ = Update.objects.get_or_create(update_id=validated_data['update_id'],
+                                                 defaults={'update_id': validated_data['update_id'],
+                                                 'message': message, 'update_type': Update.CHANNEL_POST})
 
         return update

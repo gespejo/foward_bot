@@ -19,12 +19,12 @@ from rest_framework.views import APIView
 from django.views.decorators.csrf import csrf_exempt
 
 from .models import Bot
-from .serializers import BotSerializer, UpdateSerializer
+from .serializers import BotSerializer, UpdateSerializer, ChannelUpdateSerializer
 from .utils import register_webhooks
 
 
 logger = logging.getLogger(__name__)
-# logger.level = logging.
+logger.setLevel(logging.DEBUG)
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -45,6 +45,8 @@ class TelegramView(APIView):
 
     def post(self, request, token):
         serializer = UpdateSerializer(data=request.data)
+        if not serializer.is_valid():
+            serializer = ChannelUpdateSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
             try:
