@@ -5,8 +5,13 @@ from foward_bot.telegram_API import models as api_models
 from foward_bot.telegram_API.views import TelegramView
 
 
-class FowarderView(TelegramView):
-
-    def on_post(self, update):
-        api_models.Bot.objects.get_or_create()
+# class ForwarderView(TelegramView):
+#
+#     def post(self, request, token):
+#         extra_fields = {'initialized': 'False'}
+#         if request.data['message']:
+#             request.data['message']['chat']['extra_kwargs'] = extra_fields
+#         else:
+#             request.data['channel_post']['chat']['extra_kwargs'] = extra_fields
+#         return super(TelegramView, self).post(request.data, token)
 

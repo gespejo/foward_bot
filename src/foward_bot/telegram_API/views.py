@@ -32,11 +32,6 @@ class TelegramView(APIView):
 
     bot_index = 0
 
-    # @classmethod
-    # def as_view(cls, **initkwargs):
-    #     register_webhooks(bot_index=cls.bot_index)
-    #     return super(TelegramView, cls).as_view(**initkwargs)
-
     def get(self, request, token):
         return HttpResponse()
 
@@ -71,5 +66,3 @@ class BotViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return super(BotViewSet, self).get_queryset()
-
-logging.info("Begin")

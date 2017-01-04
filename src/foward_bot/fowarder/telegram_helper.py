@@ -23,7 +23,7 @@ from django.core.urlresolvers import reverse
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 
-from foward_bot.telegram_api import models as api_models
+from foward_bot.telegram_API import models as api_models
 from foward_bot.utils.helpers import get_or_none
 
 logger = logging.getLogger(__name__)
@@ -108,5 +108,3 @@ def register_webhooks(token, force=False):
 urlpatterns = [
     url(r'^(?P<token>[-_:a-zA-Z0-9]+)/$', TelegramView.as_view(), name='telegram_webhook'),
 ]
-
-logging.info("Begin")

@@ -7,6 +7,7 @@ from telegram.ext import Dispatcher
 
 logger = logging.getLogger(__file__)
 
+
 class DjangoDispatcher(Dispatcher):
 
     def __init__(self, bot):

@@ -1,5 +1,6 @@
 # coding=utf-8
 from __future__ import unicode_literals
+import dispatcher
 
 
 """foward_bot URL Configuration
@@ -20,7 +21,6 @@ Including another URLconf
 """
 from django.conf.urls import url, include
 from foward_bot.telegram_API.urls import urlpatterns as apiurlpatterns
-from .views import FowarderView
 
 
 urlpatterns = [

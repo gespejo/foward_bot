@@ -1,6 +1,7 @@
 # coding=utf-8
 from __future__ import unicode_literals
 
+
 """
 Django settings for foward_bot project.
 
@@ -97,13 +98,6 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 
-# Django Telegram Bot settings
-
-TELEGRAM_BOT = [{
-    'token': '297704876:AAHiEy-slaktdaSMJfZtcnoDC-4HQYYDNOs',
-    'register': 'foward_bot.fowarder.dispatcher.register',
-    'webhook': 'https://bots.ken-dev.info/telegram_webhook/%s'
-}]
 
 # Internationalization
 # https://docs.djangoproject.com/en/1.9/topics/i18n/

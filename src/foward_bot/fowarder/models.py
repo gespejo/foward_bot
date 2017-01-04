@@ -8,11 +8,12 @@ from foward_bot.utils.helpers import SimpleEnum
 
 
 class Statuses(SimpleEnum):
-    ENABLED = 'google'
-    DISABLED = 'yandex'
+    ENABLED = True
+    DISABLED = False
 
 
 class Languages(SimpleEnum):
+    NONE = 'None'
     ENGLISH = 'en'
     RUSSIAN = 'ru'
     SPANISH = 'es'
@@ -24,5 +25,11 @@ class Languages(SimpleEnum):
 class AutoForward(models.Model):
     forwarder = models.ForeignKey(Chat, related_name='forwarder', verbose_name=_("Forwarder"))
     receiver = models.ForeignKey(Chat, related_name='receiver', verbose_name=_("Receiver"))
-    status = models.BooleanField(_("Status"), choices=Statuses.choices(), default=Statuses.ENABLED)
-    lang = models.CharField(_("Language"), max_length=2, choices=Languages.choices(), null=True)
+    enabled = models.BooleanField(_("Status"), default=True)
+    lang = models.CharField(_("Language"), max_length=10, choices=Languages.choices(), default=Languages.NONE)
+
+    class Meta:
+        unique_together = ('forwarder', 'receiver')
+
+
+
