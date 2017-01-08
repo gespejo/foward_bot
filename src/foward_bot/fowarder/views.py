@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class ForwarderView(TelegramView):
 
     def post(self, request, token):
-        extra_fields = {'enabled': False, 'message_counter': 0}
+        extra_fields = {'enabled': False, 'message_counter': 0, 'left': False}
         if 'message' in request.data:
             request.data['message']['chat']['extra_fields'] = extra_fields
         elif 'edited_message' in request.data:

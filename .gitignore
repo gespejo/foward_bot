@@ -139,7 +139,7 @@ log/
 rsb_ssl/
 
 bin/runserver
-secrets.json
+# secrets.json
 
 .DS_Store
 

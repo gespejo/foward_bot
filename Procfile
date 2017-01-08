@@ -1,0 +1,1 @@
+web: gunicorn src.foward_bot.wsgi --log-file -

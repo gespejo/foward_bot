@@ -27,10 +27,7 @@ markdown = 'Markdown'
 enabled = 'enabled'
 dev_username = settings.SECRETS['developer']['username']
 
-timeouts = {models.Chat.CHANNEL: 5,
-            models.Chat.GROUP: 10,
-            models.Chat.SUPERGROUP: 20
-            }
+timeouts = settings.MESSAGE_TIMEOUTS
 
 # TODO: Fix production mode logger to log errors to files and info to console
 
@@ -94,7 +91,7 @@ def start(bot, update):
         else:
             message = 'Hi, My work is to help you forward messages from one chat'\
                       ' to the other, This is your secret key for use in forwarding messages'\
-                      ' to and from my chat with you: {}. Use /help if you forget anything '\
+                      ' to my chat with you: {}. Use /help if you forget anything '\
                       .format(get_or_none(models.Chat, id=get_chat(update).id).identifier)
 
         send_message(bot, get_message(update).chat_id, text=message)
@@ -109,7 +106,7 @@ def help_command(bot, update):
                 '(strongly recommended before setting up forwarding)\n'\
                 '/setautoforward to initiate the process of setting up auto forwarding \n' \
                 '/delautoforward to initiate deletion of an auto forwarding \n'\
-                '/cancel to terminate the process of setting up or deletion of auto forwarding \n' \
+                '/cancel to terminate an ongoing process \n' \
                 '/help to get the list of commands and their descriptions \n' \
                 '/getsecretkey to get the secret key of your private chat with (needed for setting up auto forwarding)'
     bot.send_message(get_message(update).chat_id, text=help_text)
@@ -141,18 +138,25 @@ def rules(bot, update):
                     'without translations\n' \
                     '10. An auo forwarding can only be deleted either ny the person who set it up or one ' \
                     'of the admins of the chats involved' \
-                    '10. Forwarding can only be setup and deleting in a private chat (else the keys would be leaked)\n'\
-                    '12. unfortunately there is currently no way of getting back your group or channel ' \
-                    'secret key if you delete the private chat it was sent to. So I highly recommend saving ' \
-                    'it somewhere in your computer. But if you happen to lose it you can contact my developer @{}. ' \
-                    'For private chats you can get the key using /getsecretkey \n\n' \
-                    'That is all for now. I hope you have fun working with me'.format(dev_username)
+                    '11. Forwarding can only be setup and deleted in a private chat (else the keys would be leaked)\n'\
+                    '12. If I am added to a chat and an auto forwarding is not set after some number of messages' \
+                    'I will leave the chat. This is to reduce the workload of having to handle many messages. ' \
+                    'You can add me again when you need me. The number of messages are {} for channels, {} for ' \
+                    'supergroups and {} for groups \n' \
+                    '13. When all the forwardings a chat is involved in is deleted I will also leave. But again you ' \
+                    'can always add me back to the chat. \n\n' \
+                    'That is all for now. I hope you have fun working with me'.format(timeouts[models.Chat.CHANNEL],
+                                                                                      timeouts[models.Chat.SUPERGROUP],
+                                                                                      timeouts[models.Chat.GROUP])
     reply_message(update, text=forward_rules)
+
 
 def on_add(bot, update):
     del_update_and_message(update)
     api_chat = get_chat(update)
     chat = get_or_none(models.Chat, id=api_chat.id)
+    chat.extra_fields['left'] = False
+    chat.save()
     if chat.type != models.Chat.PRIVATE:
         for admin in api_chat.get_administrators():
             if not admin.user.username.endswith('bot'):
@@ -161,15 +165,17 @@ def on_add(bot, update):
                         chat.extra_fields['enabled'] = True
                         chat.save()
                     group_type = api_chat.type
-                    send_message(bot, admin.user.id, text='Hello, I was added to the {}: `{}` where you are an admin. '
-                                                          'For security purposes I only allow forwarding from groups '
-                                                          'if one of the admins approve of it. This is the secret key '
-                                                          'of your {}: {}. It will enable users to set forwarding to '
-                                                          'and from your {}. Only give this key to those you have '
-                                                          'allowed to do so. Have a nice day:)'
-                                                          .format(group_type, chat.title,
-                                                                  group_type, chat.identifier,
-                                                                  group_type))
+                    send_message(bot,
+                                 admin.user.id,
+                                 text='Hello, I was added to the {}: `{}` where you are an admin. '
+                                      'For security purposes I only allow forwarding from groups '
+                                      'if one of the admins approve of it. This is the secret key '
+                                      'of your {}: {}. It will enable users to set forwarding to '
+                                      'and from your {}. Only give this key to those you have '
+                                      'allowed to do so. Have a nice day:)'
+                                      .format(group_type, chat.title,
+                                              group_type, chat.identifier,
+                                              group_type))
 
 
 def on_remove(bot, update):
@@ -186,15 +192,9 @@ def on_remove(bot, update):
     logger.info('{} has been removed from the {} {}'.format(fd_username, chat.type, chat.title))
     chat.extra_fields['message_counter'] = 0
     chat.extra_fields[enabled] = False
+    chat.extra_fields['left'] = True
     chat.save()
     # chat.delete()
-
-
-def echo(bot, update):
-    translator = Translator()
-    # bot.send_message(update.message.chat_id, text='hello')
-    bot.send_message(get_message(update).chat_id,
-                     text=translator.translate(get_message(update).text, 'ru', service=TranslatorServices.YANDEX))
 
 # AUTO FOWARDING
 
@@ -311,6 +311,9 @@ def set_receiver(bot, update, user_data):
 
 def set_lang(bot, update, user_data):
     del_update_and_message(update)
+    if not get_message(update).text in [label for label, name in lang_choices]:
+        reply_message(update, text='Easy there my friend! Please, select only options in the keyboard')
+        return LANGUAGE
     user_data['language'] = get_message(update).text
     forwarding = None
     try:
@@ -364,7 +367,7 @@ def delete_auto_forwarding(bot, update):
 def del_sender(bot, update, user_data):
     del_update_and_message(update)
     try:
-        sender = get_or_none(models.Chat, identifier=update.message.text)
+        sender = get_or_none(models.Chat, identifier=get_message(update).text)
         if sender is None:
             reply_message(update,
                           text="The key you provided does not exist, "
@@ -404,9 +407,10 @@ def del_receiver(bot, update, user_data):
             api_sender = APIChat(sender.id, sender.type, bot=bot)
             api_receiver = APIChat(receiver.id, receiver.type, bot=bot)
             if api_sender.type != models.Chat.PRIVATE:
-                if get_message(update).from_user.id not in [admin.id for admin in api_sender.get_administrators()]:
+                if get_message(update).from_user.id not in [admin.user.id for admin in api_sender.get_administrators()]:
                     if api_receiver.type != models.Chat.PRIVATE:
-                        if get_message(update).from_user.id in [admin.id for admin in api_receiver.get_administrators()]:
+                        if get_message(update).from_user.id in [admin.user.id for admin in
+                                                                api_receiver.get_administrators()]:
                             authorzed = True
                     elif api_receiver.id == get_message(update).from_user.id:
                         authorzed = True
@@ -439,6 +443,7 @@ def del_receiver(bot, update, user_data):
             if receiver.type != models.Chat.PRIVATE:
                 if len(forwardings_rec) == 0:
                     bot.leave_chat(receiver.id)
+                    receiver.extra_fields['left'] = True
                     receiver.extra_fields['enabled'] = False
                     sender.extra_fields['message_counter'] = 0
                     receiver.save()
@@ -446,6 +451,7 @@ def del_receiver(bot, update, user_data):
                     # receiver.delete()
                 if len(forwardings_send) == 0:
                     bot.leave_chat(sender.id)
+                    sender.extra_fields['left'] = True
                     sender.extra_fields['enabled'] = False
                     sender.extra_fields['message_counter'] = 0
                     sender.save()
@@ -463,7 +469,7 @@ def cancel(bot, update, user_data):
     user_data = {}
     if get_chat(update).type == models.Chat.PRIVATE:
         reply_message(update,
-                      text='Not to worry! We can try again it again sometime later.',
+                      text='Not to worry! We can try again sometime later.',
                       reply_markup=ReplyKeyboardRemove())
 
     return ConversationHandler.END
@@ -479,6 +485,7 @@ def forward(bot, forwarding, update):
 
 
 def forward_text(bot, update):
+    del_update_and_message(update)
     forwardings = AutoForward.objects.filter(forwarder__id=get_chat(update).id)
     for forwarding in forwardings:
         if forwarding.enabled:
@@ -501,23 +508,102 @@ def forward_text(bot, update):
 
 
 def forward_others(bot, update):
+    del_update_and_message(update)
     forwardings = AutoForward.objects.filter(forwarder__id=get_chat(update).id)
     for forwarding in forwardings:
         if forwarding.enabled:
             forward(bot, forwarding, update)
 
+CHAT_TYPE, CHAT_USERNAME, CHAT_TITLE = range(11, 14)
 
-def get_key(bot, update):
+
+def get_key(bot, update, user_data):
     del_update_and_message(update)
+    reply_keyboard = [['public supergroup or public channel', 'private chat'],
+                      ['private channel', 'private supergroup', 'private group']]
     if get_chat(update).type != models.Chat.CHANNEL:
         message = ''
         if get_chat(update).type != models.Chat.PRIVATE:
             message = 'Oops! This command can only be used in private chats'
+            reply_message(update, text=message)
+            return ConversationHandler.END
         else:
-            chat = get_or_none(models.Chat, id=update.message.chat_id)
-            if chat:
-                message = 'The secret key for this chat is {}'.format(chat.identifier)
-        reply_message(update, message)
+            user_data['types_keyboard'] = [chat_type for i in reply_keyboard for chat_type in i]
+            reply_message(update, text='Please choose the chat type you want to get the key',
+                          reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True))
+            return CHAT_TYPE
+
+
+def get_chat_type(bot, update, user_data):
+    del_update_and_message(update)
+    if not get_message(update).text in user_data['types_keyboard']:
+        reply_message(update, text='Easy there my friend! Please, select only options in the keyboard')
+        return CHAT_TYPE
+    user_data['chat_type'] = get_message(update).text
+    if user_data['chat_type'] == 'private chat':
+        chat = get_or_none(models.Chat, id=get_chat(update).id)
+        if chat:
+            reply_message(update, text='The secret key for this chat is {}'.format(chat.identifier),
+                          reply_markup=ReplyKeyboardRemove())
+            return ConversationHandler.END
+    if user_data['chat_type'] == 'public supergroup or public channel':
+        reply_message(update, text='Awesome! now enter the username of your public channel or supergroup '
+                                   'without the "@" symbol')
+        return CHAT_USERNAME
+    reply_message(update,
+                  text='It is a bit tricky finding private groups, supergroups and channels '
+                       'because they do not have unique usernames like the public ones do. '
+                       'In any case, I am dedicated to bringing you my service in the best possible way '
+                       'so I wil try and see if I can get your secret key \n\n'
+                       'Please give me the title of your private group, supergroup or channel',
+                  reply_markup=ReplyKeyboardRemove())
+    return CHAT_TITLE
+
+
+def get_username(bot, update, user_data):
+    del_update_and_message(update)
+    chat = get_or_none(models.Chat, username=get_message(update).text)
+    if chat and not chat.extra_fields['left']:
+        api_chat = APIChat(chat.id, chat.type, bot=bot)
+        if get_message(update).from_user.id in [admin.user.id for admin in
+                                                api_chat.get_administrators()]:
+            reply_message(update, text='The secret key for your chat is {}'.format(chat.identifier))
+            if not chat.extra_fields[enabled]:
+                chat.extra_fields[enabled] = True
+            return ConversationHandler.END
+        else:
+            reply_message(update, text='Sorry, you are not an admin in this chat so I cannot give '
+                                       'you the chat\'s secret key. Please contact your admin to get the key.')
+            return ConversationHandler.END
+
+    reply_message(update, text='Oops! This username is not in the list of groups using my service. Are you sure you '
+                               'it is correct? Make sure to remove the @ symbol. You can try entering the'
+                               'username again or use /cancel to quit ')
+    return CHAT_USERNAME
+
+
+def get_title(bot, update, user_data):
+    del_update_and_message(update)
+    chat_type = user_data['chat_type'].split(' ')
+    chats = models.Chat.objects.filter(title=get_message(update).text, type=chat_type[1])
+    if chats and len(chats) == 1 and not chats.first().extra_fields['left']:
+        chat = chats.first()
+        api_chat = APIChat(chat.id, chat.type, bot=bot)
+        if get_message(update).from_user.id in [admin.user.id for admin in
+                                                api_chat.get_administrators()]:
+            reply_message(update, text='Lucky! The secret key for your chat is {}'.format(chat.identifier))
+            if not chat.extra_fields[enabled]:
+                chat.extra_fields[enabled] = True
+            return ConversationHandler.END
+        else:
+            reply_message(update, text='Sorry, you are not an admin in this chat so I cannot give '
+                                       'you the chat\'s secret key. Please contact your admin to get the key.')
+            return ConversationHandler.END
+
+    reply_message(update, text='Unfortunately, I couldn\'t find your chat either because no chat using my service '
+                               'has such title or there are many of them. Please contact my developer (@{}) '
+                               'and I am sure he will help you find your chat key'.format(dev_username))
+    return ConversationHandler.END
 
 
 def unknown(bot, update):
@@ -531,6 +617,7 @@ def unknown(bot, update):
                                                   'back again when you need me (@{}) '.format(fd_username))
             bot.leave_chat(sender.id)
             sender.extra_fields['enabled'] = False
+            sender.extra_fields['left'] = True
             sender.extra_fields['message_counter'] = 0
             sender.save()
             logger.info('{} has left the {} {}'.format(fd_username, sender.type, sender.title))
@@ -572,6 +659,21 @@ def register(dispatcher):
                 fallbacks=[CommandHandler('cancel', cancel, pass_user_data=True)]
             )
 
+    get_secret_key = GoodConversationHandler(
+        entry_points=[CommandHandler('getsecretkey', get_key, pass_user_data=True)],
+
+        states={
+            CHAT_TYPE: [MessageHandler(Filters.text, get_chat_type, pass_user_data=True)],
+
+            CHAT_USERNAME: [MessageHandler(Filters.text, get_username, pass_user_data=True)],
+
+            CHAT_TITLE: [MessageHandler(Filters.text, get_title, pass_user_data=True)],
+
+        },
+
+        fallbacks=[CommandHandler('cancel', cancel, pass_user_data=True)]
+    )
+
     del_forward = GoodConversationHandler(
         entry_points=[CommandHandler('delautoforward', delete_auto_forwarding)],
 
@@ -591,10 +693,10 @@ def register(dispatcher):
     dispatcher.add_handler(MessageHandler((ForwardMessageFilters.added(fd_username) |
                                            ForwardMessageFilters.channel_added), on_add))
     dispatcher.add_handler(CommandHandler('start', start))
-    dispatcher.add_handler(CommandHandler('getsecretkey', get_key))
     dispatcher.add_handler(CommandHandler('help', help_command))
     dispatcher.add_handler(CommandHandler('rules', rules))
     dispatcher.add_handler(set_forward)
+    dispatcher.add_handler(get_secret_key)
     dispatcher.add_handler(del_forward)
     dispatcher.add_handler(MessageHandler(ForwardMessageFilters.text_forwardings, forward_text))
     dispatcher.add_handler(MessageHandler(ForwardMessageFilters.other_forwardings, forward_others))

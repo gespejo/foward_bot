@@ -1,8 +1,5 @@
 certifi==2016.9.26
 Django==1.10
-django-debug-toolbar==1.6
-django-sslserver==0.19
-django-telegrambot==0.2.4
 djangorestframework==3.5.3
 enum34==1.1.6
 future==0.16.0

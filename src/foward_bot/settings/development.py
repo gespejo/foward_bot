@@ -33,6 +33,11 @@ DATABASES = {
     }
 }
 
+MESSAGE_TIMEOUTS = {
+    'channel': 5,
+    'group': 10,
+    'supergroup': 20
+}
 
 LOGGING = {
     'version': 1,

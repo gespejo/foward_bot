@@ -1,5 +1,6 @@
 # coding=utf-8
 from __future__ import unicode_literals
+import dj_database_url
 
 from .base import *  # noqa
 
@@ -7,18 +8,21 @@ DEBUG = False
 
 SITE_ID = 3
 
-ALLOWED_HOSTS = SECRETS['allowed_hosts']['production']
+# ALLOWED_HOSTS = SECRETS['allowed_hosts']['production']
+
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 
-SECURE_SSL_REDIRECT = False
+# SECURE_SSL_REDIRECT = False
+#
+#
+# INSTALLED_APPS.append("sslserver")
+# INSTALLED_APPS.append('debug_toolbar')
+# MIDDLEWARE_CLASSES.insert(
+#         MIDDLEWARE_CLASSES.index('django.middleware.common.CommonMiddleware') + 1,
+#         'debug_toolbar.middleware.DebugToolbarMiddleware',
+#     )
 
-
-INSTALLED_APPS.append("sslserver")
-INSTALLED_APPS.append('debug_toolbar')
-MIDDLEWARE_CLASSES.insert(
-        MIDDLEWARE_CLASSES.index('django.middleware.common.CommonMiddleware') + 1,
-        'debug_toolbar.middleware.DebugToolbarMiddleware',
-    )
 
 DATABASES = {
     'default': {
@@ -29,6 +33,23 @@ DATABASES = {
         'HOST': SECRETS['database']['production']['HOST'],
         'PORT': SECRETS['database']['production']['PORT'],
     }
+}
+
+db_from_env = dj_database_url.config(conn_max_age=500)
+DATABASES['default'].update(db_from_env)
+
+
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+
+STATIC_ROOT = os.path.join(PROJECT_ROOT, 'staticfiles')
+STATIC_URL = '/static/'
+
+STATICFILES_STORAGE = 'whitenoise.django.GzipManifestStaticFilesStorage'
+
+MESSAGE_TIMEOUTS = {
+    'channel': 50,
+    'group': 200,
+    'supergroup': 500
 }
 
 LOGGING = {
