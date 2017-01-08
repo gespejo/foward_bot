@@ -20,10 +20,10 @@ Including another URLconf
     3. Add a URL to urlpatterns:  url(r'^blog/', include(blog_urls))
 """
 from django.conf.urls import url, include
-from foward_bot.telegram_API.urls import urlpatterns as apiurlpatterns
+from .views import ForwarderView
 
 
 urlpatterns = [
-    # url(r'(?P<token>[-_:a-zA-Z0-9]+)/$', FowarderView.as_view(), name='webhook'),
-    # url(r'^api/', include('foward_bot.telegram_API.urls', namespace='api')),
+    url(r'^api/webhook/(?P<token>[-_:a-zA-Z0-9]+)', ForwarderView.as_view(), name='webhook'),
+    url(r'^api/', include('foward_bot.telegram_API.urls', namespace='api')),
 ]

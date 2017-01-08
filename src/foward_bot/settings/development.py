@@ -8,28 +8,28 @@ DEBUG = True
 
 SITE_ID = 3
 
-ALLOWED_HOSTS = [".ngrok.io",
-                 "localhost"]
+ALLOWED_HOSTS = SECRETS['allowed_hosts']['development']
 
 SECURE_SSL_REDIRECT = False
 
-MICROBOT_WEBHOOK_DOMAIN = "https://ken-dev.ngrok.io"
-
 
 INSTALLED_APPS.append("sslserver")
-
-YANDEX_API_KEY = 'trnsl.1.1.20161226T211040Z.9e963380a71a1645.a935c43983b6417a3735c8090caf01401b1a0fbe'
+INSTALLED_APPS.append('debug_toolbar')
+MIDDLEWARE_CLASSES.insert(
+        MIDDLEWARE_CLASSES.index('django.middleware.common.CommonMiddleware') + 1,
+        'debug_toolbar.middleware.DebugToolbarMiddleware',
+    )
 
 # APPEND_SLASH = False
 
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql_psycopg2',
-        'NAME': 'foward_bot',
-        'USER': 'kenneth',
-        'PASSWORD': 'nedutext',
-        'HOST': 'localhost',
-        'PORT': '',
+        'NAME': SECRETS['database']['development']['NAME'],
+        'USER': SECRETS['database']['development']['USER'],
+        'PASSWORD': SECRETS['database']['development']['PASSWORD'],
+        'HOST': SECRETS['database']['development']['HOST'],
+        'PORT': SECRETS['database']['development']['PORT'],
     }
 }
 

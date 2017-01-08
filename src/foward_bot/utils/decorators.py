@@ -1,22 +1,8 @@
-# coding=utf-8
-from __future__ import unicode_literals
-
-import logging
 import atexit
 import Queue
 import threading
 
 from django.core.mail import mail_admins
-
-
-logger = logging.getLogger(__name__)
-
-
-def get_or_none(model, *args, **kwargs):
-    try:
-        return model.objects.get(*args, **kwargs)
-    except model.DoesNotExist:
-        return None
 
 
 def _worker():
@@ -46,5 +32,3 @@ def _cleanup():
     _queue.join()   # so we don't exit too soon
 
 atexit.register(_cleanup)
-
-logging.info("Begin")

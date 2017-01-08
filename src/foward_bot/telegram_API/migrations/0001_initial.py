@@ -17,6 +17,25 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.CreateModel(
+            name='Bot',
+            fields=[
+                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('token', models.CharField(db_index=True, max_length=100, verbose_name='Token')),
+                ('register', models.CharField(blank=True, max_length=1000, verbose_name='Register')),
+                ('ssl_certificate',
+                 models.FileField(blank=True, null=True, upload_to='telegrambot/ssl/', verbose_name='SSL certificate')),
+                ('enabled', models.BooleanField(default=True, verbose_name='Enable')),
+                ('created', models.DateTimeField(auto_now_add=True, verbose_name='Date Created')),
+                ('modified', models.DateTimeField(auto_now=True, verbose_name='Date Modified')),
+                ('site', models.OneToOneField(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE,
+                                              to='sites.Site', verbose_name='Site')),
+            ],
+            options={
+                'verbose_name': 'Bot',
+                'verbose_name_plural': 'Bots',
+            },
+        ),
+        migrations.CreateModel(
             name='Chat',
             fields=[
                 ('id', models.BigIntegerField(primary_key=True, serialize=False, verbose_name='Id')),

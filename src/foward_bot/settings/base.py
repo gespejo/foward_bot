@@ -15,16 +15,20 @@ https://docs.djangoproject.com/en/1.9/ref/settings/
 """
 
 import os
+import json
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+with open(os.path.join(BASE_DIR, '../../secrets.json')) as f:
+    SECRETS = json.load(f)
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/1.9/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = '39r+n)53&0#c!q=moqu7%8-2x934-#b09332jt-h#_sjw=_%-p'
+SECRET_KEY = SECRETS['secret_key']
 
 
 # Application definition
@@ -40,7 +44,6 @@ INSTALLED_APPS = [
 
     'rest_framework',
     'rest_framework.authtoken',
-    'debug_toolbar',
 
     'foward_bot.fowarder',
     'foward_bot.telegram_API',
@@ -51,7 +54,6 @@ MIDDLEWARE_CLASSES = [
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
-    'debug_toolbar.middleware.DebugToolbarMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.auth.middleware.SessionAuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
@@ -100,6 +102,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 
 # Internationalization
+
 # https://docs.djangoproject.com/en/1.9/topics/i18n/
 
 # django debugger settings
@@ -116,6 +119,9 @@ USE_L10N = True
 
 USE_TZ = True
 
+
+# External APIs
+YANDEX_API_KEY = SECRETS['yandex_api_key']
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/1.9/howto/static-files/

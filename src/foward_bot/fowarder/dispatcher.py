@@ -3,76 +3,163 @@ from __future__ import unicode_literals
 
 import logging
 
-from telegram import Bot as APIBot, Update
-from telegram.ext import Dispatcher
-from foward_bot.telegram_API.dispatcher import DjangoDispatcher
-from foward_bot.telegram_API import models
+from telegram import error as api_error
+from telegram import Chat as APIChat
 
 from telegram import (ReplyKeyboardMarkup, ReplyKeyboardRemove)
-from telegram.ext import CommandHandler, MessageHandler, Filters, ConversationHandler, RegexHandler
+from telegram.ext import CommandHandler, MessageHandler, Filters, ConversationHandler
+from django.conf import settings
 from foward_bot.services.translator import TranslatorServices, Translator
 from foward_bot.telegram_API import models
-from foward_bot.utils.filters import CustomFilters
 from foward_bot.utils.custom_classes import GoodConversationHandler
 from foward_bot.utils.helpers import get_or_none
-from .models import AutoForward, Languages, Statuses
-from .utils import ForwardMessageFilters
+from .models import AutoForward, Languages
+from .utils import ForwardMessageFilters, CustomRegexHandler
 
 # logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
 #                     level=logging.DEBUG)
 
 logger = logging.getLogger(__name__)
 
-fd_username = 'Fowarderbot'
+fd_username = settings.SECRETS['bot']['username']
+HTML = 'HTML'
+markdown = 'Markdown'
+enabled = 'enabled'
+dev_username = settings.SECRETS['developer']['username']
+
+timeouts = {models.Chat.CHANNEL: 5,
+            models.Chat.GROUP: 10,
+            models.Chat.SUPERGROUP: 20
+            }
+
+# TODO: Fix production mode logger to log errors to files and info to console
 
 
-def get_chat(update):
-    if update.message:
-        return update.message.chat
-    return update.channel_post.chat
+def escape_markdown(text):
+    text = text.replace('_', '\_')
+    text = text.replace('*', '\*')
+    text = text.replace('`', '\`')
+    return text.replace('```', '```')
 
 
 def get_message(update):
     if update.message:
         return update.message
-    return update.channel_post
+    elif update.edited_message:
+        return update.edited_message
+    elif update.channel_post:
+        return update.channel_post
+    return update.edited_channel_post
 
 
-def send_message(bot, chat_id, **kwargs):
-    bot.send_message(chat_id=chat_id, parse_mode='Markdown', **kwargs)
+def get_chat(update):
+    return get_message(update).chat
+
+
+def del_update_and_message(update):
+    myupdate = get_or_none(models.Update, update_id=update.update_id)
+    if myupdate:
+        myupdate.delete()
+    message = get_or_none(models.Message, message_id=get_message(update).message_id)
+    if message:
+        message.delete()
+
+
+def send_message(bot, chat_id, text, **kwargs):
+    try:
+        bot.send_message(chat_id=chat_id, parse_mode=markdown, text=text, **kwargs)
+    except api_error.TelegramError as tg_error:
+        logger.info('Probably a wrong markup. Will escape characters and retry send_message. Error: {}'.
+                    format(tg_error.message))
+        bot.send_message(chat_id=chat_id, parse_mode=markdown, text=escape_markdown(text), **kwargs)
+
+
+def reply_message(update, text, **kwargs):
+    try:
+        get_message(update).reply_text(text=text, parse_mode=markdown, **kwargs)
+    except api_error.TelegramError as tg_error:
+        logger.info('Probably a wrong markup. Will escape characters and retry reply_text. Error: {}'.
+                    format(tg_error.message))
+        get_message(update).reply_text(text=escape_markdown(text), parse_mode=markdown, **kwargs)
 
 
 def start(bot, update):
-    if update.message.chat.type is models.Chat.CHANNEL:
-        resp_admin = update.message.chat.get_administrators()[0]
-        for admin in update.message.chat.get_administrators():
-            if admin.user.username != bot.username:
-                resp_admin = admin
-                break
-        chat_id = resp_admin.user.id
-    else:
-        chat_id = update.message.chat_id
-    send_message(bot, chat_id, text='Hi, My work is to help you forward messages from one chat'
-                                    ' to the other, This is your identifier: %s, use /help '
-                                    'to see how you can talk with me' %
-                                    models.Chat.objects.get(id=update.message.chat_id))
+    del_update_and_message(update)
+    if get_chat(update).type != models.Chat.CHANNEL:
+        if get_chat(update).type != models.Chat.PRIVATE:
+            message = 'Hi, My work is to help you forward messages from one chat to ' \
+                      'the other, You can setup auto forwarding using /setAutoForward in a private chat with me. ' \
+                      'To do this you have to get the forwarding secret key from the chat administrators. ' \
+                      'Use /help if you need info on how to set it up'
+        else:
+            message = 'Hi, My work is to help you forward messages from one chat'\
+                      ' to the other, This is your secret key for use in forwarding messages'\
+                      ' to and from my chat with you: {}. Use /help if you forget anything '\
+                      .format(get_or_none(models.Chat, id=get_chat(update).id).identifier)
+
+        send_message(bot, get_message(update).chat_id, text=message)
 
 
-def help(bot, update):
-    bot.send_message(update.message.chat_id, text='This is a help message')
+def help_command(bot, update):
+    del_update_and_message(update)
+    help_text = 'My major functionality is to set auto forwarding between different chats (including channels) ' \
+                'with the ability of translating the message text into your desired language before forwarding. ' \
+                'Here are a list of my commands: Use\n' \
+                '/rules to read about the rules of auto forwarding' \
+                '(strongly recommended before setting up forwarding)\n'\
+                '/setautoforward to initiate the process of setting up auto forwarding \n' \
+                '/delautoforward to initiate deletion of an auto forwarding \n'\
+                '/cancel to terminate the process of setting up or deletion of auto forwarding \n' \
+                '/help to get the list of commands and their descriptions \n' \
+                '/getsecretkey to get the secret key of your private chat with (needed for setting up auto forwarding)'
+    bot.send_message(get_message(update).chat_id, text=help_text)
 
+
+def rules(bot, update):
+    del_update_and_message(update)
+    forward_rules = 'These are the rules, restrictions and guidelines of setting up auto forwarding: \n\n' \
+                    '1. Forwarding can only be setup in between chats that I have been added in \n'\
+                    '2. For security and privacy purposes, people cannot set forwarding from a chat or to a chat ' \
+                    'without the permission of at least one of the admins of the chats. For that purpose each ' \
+                    'where I am added has a secret key which will be sent to the admins. The set forwarding, ' \
+                    'you need to get the keys of both the sending chat and the receiving chat \n' \
+                    '3. As a result of Telegrams\'s privacy policies I cannot send private messages to people ' \
+                    'who have not initiated a conversation with me, so I cannot send the secret key to admins who ' \
+                    'do not have a private chat with me. It is highly recommended that the admins themselves ' \
+                    'add me to the chats and send me a private message before doing that.\n' \
+                    '4. For channels, it is a bit tricky. The admins can only receive their secret keys after ' \
+                    'one post have been made from the time I was added \n' \
+                    '5. The only way I can be added in channels is to add me as an admin (general Telegram rule)\n' \
+                    '6. Forwarding can only be set to private chats (with me) and not from it \n' \
+                    '7. A chat cannot receive forwarding if it already sending out to another chat ' \
+                    '(to prevent circular forwarding and loops)\n' \
+                    '8. A chat can receive many forwardings (from more than 1 chat) or send many ' \
+                    '(to more than one chat)\n' \
+                    '9. You can set a language to translate all the text to when forwarding. I currently ' \
+                    'support translations to English, Russian, Spanish, Chinese, French, Arabic, German and Hindi. ' \
+                    'More will be added later if needed. Of course You can choose `None` to forward ' \
+                    'without translations\n' \
+                    '10. An auo forwarding can only be deleted either ny the person who set it up or one ' \
+                    'of the admins of the chats involved' \
+                    '10. Forwarding can only be setup and deleting in a private chat (else the keys would be leaked)\n'\
+                    '12. unfortunately there is currently no way of getting back your group or channel ' \
+                    'secret key if you delete the private chat it was sent to. So I highly recommend saving ' \
+                    'it somewhere in your computer. But if you happen to lose it you can contact my developer @{}. ' \
+                    'For private chats you can get the key using /getsecretkey \n\n' \
+                    'That is all for now. I hope you have fun working with me'.format(dev_username)
+    reply_message(update, text=forward_rules)
 
 def on_add(bot, update):
-    if update.message:
-        api_chat = update.message.chat
-        chat = get_or_none(models.Chat, id=api_chat.id)
-    else:
-        api_chat = update.channel_post.chat
-        chat = get_or_none(models.Chat, id=api_chat.id)
+    del_update_and_message(update)
+    api_chat = get_chat(update)
+    chat = get_or_none(models.Chat, id=api_chat.id)
     if chat.type != models.Chat.PRIVATE:
         for admin in api_chat.get_administrators():
             if not admin.user.username.endswith('bot'):
                 if get_or_none(models.User, id=admin.user.id):
+                    if not chat.extra_fields['enabled']:
+                        chat.extra_fields['enabled'] = True
+                        chat.save()
                     group_type = api_chat.type
                     send_message(bot, admin.user.id, text='Hello, I was added to the {}: `{}` where you are an admin. '
                                                           'For security purposes I only allow forwarding from groups '
@@ -85,103 +172,299 @@ def on_add(bot, update):
                                                                   group_type))
 
 
+def on_remove(bot, update):
+    del_update_and_message(update)
+    chat = get_or_none(models.Chat, id=get_chat(update).id)
+    outgoing = AutoForward.objects.filter(forwarder__id=chat.id)
+    outgoing.delete()
+    incoming = AutoForward.objects.filter(receiver__id=chat.id)
+    incoming.delete()
+    if chat.type == models.Chat.PRIVATE:
+        user = get_or_none(models.User, id=get_message(update).from_user.id)
+        if user:
+            user.delete()
+    logger.info('{} has been removed from the {} {}'.format(fd_username, chat.type, chat.title))
+    chat.extra_fields['message_counter'] = 0
+    chat.extra_fields[enabled] = False
+    chat.save()
+    # chat.delete()
+
+
 def echo(bot, update):
     translator = Translator()
     # bot.send_message(update.message.chat_id, text='hello')
-    bot.send_message(update.message.chat_id,
-                     text=translator.translate(update.message.text, 'ru', service=TranslatorServices.YANDEX))
+    bot.send_message(get_message(update).chat_id,
+                     text=translator.translate(get_message(update).text, 'ru', service=TranslatorServices.YANDEX))
 
 # AUTO FOWARDING
 
-SENDER, RECEIVER, LANGUAGE = range(3)
+SENDER, RECEIVER, LANGUAGE, = range(3)
 
 
 def set_auto_forward(bot, update):
+    del_update_and_message(update)
     logger.debug('starting the auto forwarding')
-    if get_chat(update).type != models.Chat.PRIVATE:
-        if get_chat(update).type != models.Chat.CHANNEL:
-            update.message.reply_text(
-                'Sorry, this command can only be used in a private chat!'
-            )
-    update.message.reply_text(
-            'Hello! It is good you want to set up auto forwarding.'
-            'Send /cancel to stop talking to me.\n\n'
-            'Please give me the secret key of the chat(group, supergroup or channel) you want to forward from. '
-            'You can get it from one of the admins if you don\'t have it. Remember I have to be added to the chat '
-            'one of the administrators to be able to forward messages to and from it.',
-    )
-
-    return SENDER
+    if get_chat(update).type != models.Chat.CHANNEL:
+        if get_chat(update).type != models.Chat.PRIVATE:
+            reply_message(update, text='Sorry, this command can only be used in a private chat')
+            return ConversationHandler.END
+        else:
+            reply_message(update,
+                          text='Hello! It is good you want to set up auto forwarding. I hope you have read the rules '
+                               'with /rules. If not please read them before starting the setup'
+                               'Send /cancel to terminate the process.\n\n'
+                               'Please give me the secret key of the chat(group, supergroup or channel) '
+                               'you want to forward from. '
+                               'You can get it from one of the admins if you don\'t have it. Remember I have to be '
+                               'added to the chat '
+                               'one of the administrators to be able to forward messages to and from it.',
+                )
+        return SENDER
+    return ConversationHandler.END
 
 
 def set_sender(bot, update, user_data):
+    del_update_and_message(update)
     try:
-        sender = get_or_none(models.Chat, identifier=update.message.text)
-        if sender is None:
-            update.message.reply_text("The key you provided does not exist, "
-                                      "please check that it is correct")
+        sender = get_or_none(models.Chat, identifier=get_message(update).text)
+        if sender is None or not sender.extra_fields[enabled]:
+            reply_message(update,
+                          text="The key you provided does not exist, "
+                               "please check that it is correct and I am still in the chat")
             return SENDER
-        user_data['sender_id'] = sender.id
-        update.message.reply_text("Great, now enter the secret key of the chat(user, group, supergroup or channel) "
-                                  "you want me the forward the messages to ")
-        return RECEIVER
-    except Exception as e:
-        logger.error(e.message)
-        update.message.reply_text("Oops! Please enter the key correctly")
-        return SENDER
+        if sender.type == models.Chat.PRIVATE:
+            reply_message(update,
+                          text="The key you provided belongs to a private chat. Forwarding cannot"
+                               "be set from my users' private chat with me. You can only forward to them"
+                               "please enter another chat's secret key or use /cancel to terminate")
+            return SENDER
+        forwardings = AutoForward.objects.filter(receiver=sender)
+        if len(forwardings) > 0:
+            reply_message(update,
+                          text="Unfortunately, this chat is already receiving auto "
+                               "forwards from another chat. In order to prevent circular "
+                               "forwardings, I do not allow a chat to send and receive forwards "
+                               "simultaneously, please enter another chat's secret key or "
+                               "use /cancel to terminate the setup. Later you can use /rules to read more "
+                               "about the auto forwarding rules")
+            return SENDER
 
+        user_data['sender_id'] = sender.id
+        reply_message(update, text="Great!, now enter the secret key of the chat(user, group, supergroup or "
+                                   "channel) you want me to forward the messages to.")
+        return RECEIVER
+    except Exception as ex:
+        logger.error(ex.message)
+        reply_message(update, text="Oops! Please enter the key correctly")
+        return SENDER
 
 lang_choices = list(Languages.choices())
 lang_choices.sort()
 
 
 def set_receiver(bot, update, user_data):
+    del_update_and_message(update)
     logger.debug('set_receiver called')
     reply_keyboard = [[label for label, name in lang_choices]]
     try:
-        receiver = get_or_none(models.Chat, identifier=update.message.text)
-        if receiver is None:
-            update.message.reply_text("Unfortunately, the key you provided does not exist, "
-                                      "please check that the key is correct. Ask the admins of the chat")
+        receiver = get_or_none(models.Chat, identifier=get_message(update).text)
+        if receiver is None or not receiver.extra_fields[enabled]:
+            reply_message(update,
+                          text="Unfortunately, the key you provided does not exist, "
+                               "please check that the key is correct and that I'm still in the chat. "
+                               "Ask the admins of the chat")
             return RECEIVER
         if receiver.id == user_data['sender_id']:
-            update.message.reply_text("Oops! The receiving chat cannot be the same as the as the forwarding chat"
-                                      "please enter the correct secret key")
+            reply_message(update, text="Oops! The receiving chat cannot be the same as the as the forwarding chat"
+                                       "please enter the correct secret key")
             return RECEIVER
-        forwarding = AutoForward.objects.filter(receiver=receiver, forwarder__id=user_data['sender_id'])
-        if len(forwarding) > 1:
-            update.message.reply_text("Oops! There is already an auto forwarding between these two chats. "
-                                      "Note that auto forwarding can only be set in one direction between two chats. "
-                                      "Another one cannot be set until the existing one is deleted. Please use /cancel "
-                                      "to cancel or enter another chat secret key to continue the setup")
+        forwardings = AutoForward.objects.filter(forwarder=receiver)
+        if len(forwardings) > 0:
+            reply_message(update,
+                          text="Unfortunately, this chat is already sending auto "
+                               "forwards to another chat. In order to prevent circular "
+                               "forwardings, I do not allow a chat to send and receive forwards "
+                               "simultaneously, please enter another chat's secret key or "
+                               "use /cancel to terminate the setup. Later you can use /rules to read more "
+                               "about the auto forwarding rules")
+            return RECEIVER
+        forwardings = AutoForward.objects.filter(receiver=receiver, forwarder__id=user_data['sender_id'])
+        if len(forwardings) > 0:
+            reply_message(update,
+                          text="Oops! There is already an auto forwarding between these two chats. "
+                               "Another one cannot be set until the existing one is deleted. Please use "
+                               "/cancel to cancel or enter another chat's secret key to "
+                               "continue the setup")
             return RECEIVER
         user_data['receiver_id'] = receiver.id
-        update.message.reply_text("We are almost done, now you just have to chose a language to translate the messages"
-                                  "to, before forwarding. Choose None if you don't need translating the messages ",
-                                  reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True))
+        reply_message(update,
+                      text="We are almost done, now you just have to choose a language to "
+                           "translate the messages to, before forwarding. Choose None if you "
+                           "don't need translating the messages",
+                           reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True))
         return LANGUAGE
-    except Exception as e:
-        logger.error(e.message)
-        update.message.reply_text("Oops! Please enter the key correctly")
+    except Exception as ex:
+        logger.error(ex.message)
+        reply_message(update, text="Oops! Please enter the key correctly")
         return RECEIVER
 
 
 def set_lang(bot, update, user_data):
-    user_data['language'] = update.message.text
-    sender = models.Chat.objects.get(id=user_data['sender_id'])
-    receiver = models.Chat.objects.get(id=user_data['receiver_id'])
-    forwarding, _ = AutoForward.objects.get_or_create(forwarder=sender, receiver=receiver, lang=user_data['language'])
-    user_data = {}
-    update.message.reply_text("Congratulations! Your auto forwarding has been set and"
-                              " should now be up and running!", reply_markup=ReplyKeyboardRemove())
+    del_update_and_message(update)
+    user_data['language'] = get_message(update).text
+    forwarding = None
+    try:
+        sender = get_or_none(models.Chat, id=user_data['sender_id'])
+        receiver = get_or_none(models.Chat, id=user_data['receiver_id'])
+        creator = get_or_none(models.User, id=get_message(update).from_user.id)
+        header = '`Forwarded from {}`'.format(sender.username) if sender.username else \
+            '`Forwarded from {}`'.format(sender.title)
+        forwarding = AutoForward.objects.create(forwarder=sender, receiver=receiver,
+                                                creator=creator, lang=user_data['language'],
+                                                message_header=header)
+        if forwarding:
+            logger.info('Auto forwarding has been set {} to {}'.format(sender.title, receiver.title))
+            user_data = {}
+            reply_message(update,
+                          text="Congratulations! Your auto forwarding has been set and"
+                               " should now be up and running!", reply_markup=ReplyKeyboardRemove())
+    except Exception as ex:
+        logger.error(ex.message)
+        if not forwarding:
+            reply_message(update, text="Oops! Something went wrong, please try again later!")
 
-# del delete_auto_forwarding(bot, update, user_data):
+    return ConversationHandler.END
+
+# Auto Forwarding Deletion
+
+DEL_SENDER, DEL_RECEIVER = range(5, 7)
+
+
+def delete_auto_forwarding(bot, update):
+    del_update_and_message(update)
+    logger.debug('starting the auto forwarding deletion')
+    if get_chat(update).type != models.Chat.CHANNEL:
+        if get_chat(update).type != models.Chat.PRIVATE:
+            reply_message(update,
+                          text='Sorry, this command can only be used in a private chat!')
+            return ConversationHandler.END
+        else:
+            reply_message(update,
+                          text='Hello! It will just take a few steps to disable the auto forwarding. '
+                               'Remember that you can'
+                               'only disable an auto forwarding you setup by yourself or if you are an '
+                               'admin in a group '
+                               'involved in the auto forwarding. Send /cancel to cancel the process.\n\n'
+                               'Please give me the secret key of the chat(group, supergroup or channel) '
+                               'which is being forwarded from.')
+            return DEL_SENDER
+    return ConversationHandler.END
+
+
+def del_sender(bot, update, user_data):
+    del_update_and_message(update)
+    try:
+        sender = get_or_none(models.Chat, identifier=update.message.text)
+        if sender is None:
+            reply_message(update,
+                          text="The key you provided does not exist, "
+                               "please check that it is correct")
+            return DEL_SENDER
+        user_data['sender_id'] = sender.id
+        reply_message(update,
+                      text="Great, now enter the secret key of the chat(user, group, supergroup "
+                           "or channel) which is being forwarding to ")
+        return DEL_RECEIVER
+    except Exception as ex:
+        logger.error(ex.message)
+        reply_message(update, text="Oops! Please enter the key correctly")
+        return DEL_SENDER
+
+
+def del_receiver(bot, update, user_data):
+    del_update_and_message(update)
+    logger.debug('del_receiver called')
+    try:
+        sender = get_or_none(models.Chat, id=user_data['sender_id'])
+        receiver = get_or_none(models.Chat, identifier=get_message(update).text)
+        if receiver is None:
+            reply_message(update,
+                          text="Unfortunately, the key you provided does not exist, "
+                               "please check that the key is correct")
+            return DEL_RECEIVER
+        forwarding = get_or_none(AutoForward, forwarder__id=user_data['sender_id'],
+                                 receiver__id=receiver.id)
+        if not forwarding:
+            reply_message(update,
+                          text="Oops! There is no auto forwarding set between these two chats, "
+                               "ensure that both have an active auto forwarding and try again later.")
+            return ConversationHandler.END
+        authorzed = False
+        if forwarding.creator.id != get_message(update).from_user.id:
+            api_sender = APIChat(sender.id, sender.type, bot=bot)
+            api_receiver = APIChat(receiver.id, receiver.type, bot=bot)
+            if api_sender.type != models.Chat.PRIVATE:
+                if get_message(update).from_user.id not in [admin.id for admin in api_sender.get_administrators()]:
+                    if api_receiver.type != models.Chat.PRIVATE:
+                        if get_message(update).from_user.id in [admin.id for admin in api_receiver.get_administrators()]:
+                            authorzed = True
+                    elif api_receiver.id == get_message(update).from_user.id:
+                        authorzed = True
+                else:
+                    authorzed = True
+            elif api_sender.id == get_message(update).from_user.id:
+                authorzed = True
+        else:
+            authorzed = True
+        if not authorzed:
+            reply_message(update,
+                          text="Unfortunately you are neither the creator of this auto forwarding "
+                               "or an admin in one of the chats involved. Please Request deactivation from "
+                               "the admin or the auto forwarding creator")
+            return ConversationHandler.END
+        else:
+            forwarding.delete()
+            send_message(bot, get_message(update).chat_id, text="forwarding has been deleted successfully.")
+            logger.info("forwarding from {} to {} has been deleted".format(sender.title, receiver.title))
+            forwardings_rec = AutoForward.objects.filter(receiver=receiver)
+            forwardings_send = AutoForward.objects.filter(forwarder=sender)
+            if receiver.type != models.Chat.CHANNEL and receiver.type != models.Chat.PRIVATE:
+                text = 'The auto forwarding from {} to this {} has been deleted, ' \
+                       'so I will no longer forward message from there.'.format(sender.title, receiver.type)
+                if len(forwardings_rec) == 0:
+                    text += ' Since there are no more auto forwardings involving this chat, I will now '\
+                            'leave. If you need me again, just holla at me (@{}) and add me '\
+                            'me to the chat. It was fun having you all!'.format(fd_username)
+                send_message(bot, chat_id=receiver.id, text=text)
+            if receiver.type != models.Chat.PRIVATE:
+                if len(forwardings_rec) == 0:
+                    bot.leave_chat(receiver.id)
+                    receiver.extra_fields['enabled'] = False
+                    sender.extra_fields['message_counter'] = 0
+                    receiver.save()
+                    logger.info('{} has left the {} {}'.format(fd_username, receiver.type, receiver.title))
+                    # receiver.delete()
+                if len(forwardings_send) == 0:
+                    bot.leave_chat(sender.id)
+                    sender.extra_fields['enabled'] = False
+                    sender.extra_fields['message_counter'] = 0
+                    sender.save()
+                    logger.info('{} has left the {} {}'.format(fd_username, receiver.type, receiver.title))
+                    # sender.delete()
+            user_data = {}
+            return ConversationHandler.END
+    except Exception as ex:
+        logger.error(ex.message)
+        reply_message(update, text="Oops! Something went wrong, please try again later!")
+        return RECEIVER
 
 
 def cancel(bot, update, user_data):
     user_data = {}
-    update.message.reply_text('Not to worry! We can try setting it again sometime later.',
-                              reply_markup=ReplyKeyboardRemove())
+    if get_chat(update).type == models.Chat.PRIVATE:
+        reply_message(update,
+                      text='Not to worry! We can try again it again sometime later.',
+                      reply_markup=ReplyKeyboardRemove())
 
     return ConversationHandler.END
 
@@ -190,6 +473,9 @@ def forward(bot, forwarding, update):
     bot.forward_message(chat_id=forwarding.receiver.id,
                         from_chat_id=forwarding.forwarder.id,
                         message_id=get_message(update).message_id)
+    if forwarding.forwarder.type != models.Chat.CHANNEL:
+        extra_message = str(forwarding.message_header)
+        send_message(bot, chat_id=forwarding.receiver.id, text=extra_message)
 
 
 def forward_text(bot, update):
@@ -199,7 +485,18 @@ def forward_text(bot, update):
             if forwarding.lang == Languages.NONE.value:
                 return forward(bot, forwarding, update)
             translator = Translator()
-            text = translator.translate(text=get_message(update).text, lang_to=forwarding.lang)
+            heading = forwarding.message_header
+            if update.message and update.message.from_user.username:
+                heading = "`By` @{}".format(get_message(update).from_user.username) + "\n" + heading
+            elif update.message:
+                if update.message.from_user.last_name:
+                    heading = "`By {} {}`".format(get_message(update).from_user.first_name,
+                                                  get_message(update).from_user.last_name) + "\n" + heading
+                else:
+                    heading = "`By {}`".format(get_message(update).from_user.first_name) + "\n" + heading
+            heading += '\n\n'
+            text = heading + translator.translate(text=get_message(update).text,
+                                                  lang_to=forwarding.lang)
             send_message(bot, forwarding.receiver.id, text=text)
 
 
@@ -210,164 +507,107 @@ def forward_others(bot, update):
             forward(bot, forwarding, update)
 
 
+def get_key(bot, update):
+    del_update_and_message(update)
+    if get_chat(update).type != models.Chat.CHANNEL:
+        message = ''
+        if get_chat(update).type != models.Chat.PRIVATE:
+            message = 'Oops! This command can only be used in private chats'
+        else:
+            chat = get_or_none(models.Chat, id=update.message.chat_id)
+            if chat:
+                message = 'The secret key for this chat is {}'.format(chat.identifier)
+        reply_message(update, message)
+
+
+def unknown(bot, update):
+    del_update_and_message(update)
+    try:
+        sender = get_or_none(models.Chat, id=get_chat(update).id)
+        if sender.type != models.Chat.PRIVATE and sender.extra_fields['message_counter'] >= timeouts[sender.type]:
+            if sender.type == models.Chat.GROUP or sender.type == models.Chat.SUPERGROUP:
+                send_message(bot, sender.id, text='You have not setup any auto forwarding since you added me, so '
+                                                  'I will leave because I\'m busy serving other chats. Just add me '
+                                                  'back again when you need me (@{}) '.format(fd_username))
+            bot.leave_chat(sender.id)
+            sender.extra_fields['enabled'] = False
+            sender.extra_fields['message_counter'] = 0
+            sender.save()
+            logger.info('{} has left the {} {}'.format(fd_username, sender.type, sender.title))
+        elif not get_message(update).left_chat_member or \
+                (get_message(update).left_chat_member and get_message(update).left_chat_member.username != fd_username):
+                sender.extra_fields['message_counter'] += 1
+                sender.save()
+
+    except Exception as ex:
+        logger.exception('an error occurred while processing an unknown message from {}: {}'
+                         .format(get_chat(update).title if get_chat(update).title else get_chat(update).username,
+                                 ex.message))
+
+
 def error(bot, update, error_message):
     logger.error(error_message)
-    bot.send_message(get_chat(update).id, text='Sorry, an error occurred:( Try again later')
+    if get_chat(update).type == models.Chat.PRIVATE:
+        send_message(bot, get_chat(update).id, text='Sorry, an error occurred:( Try again later')
 
 
 # this method will be called on start of application
 def register(dispatcher):
-    # dispatcher.add_handler(CommandHandler('SetAutoForward', set_auto_forward))
-    # dispatcher.add_handler(CommandHandler('start', start))
-    # dispatcher.add_handler(MessageHandler(Filters.text, echo))
-    # # dispatcher.add_handler(CommandHandler('auto_forward', auto_foward, pass_args=True))
-    # dispatcher.add_error_handler(error)
-
-    conv_handler = GoodConversationHandler(
-                entry_points=[CommandHandler('setAutoForward', set_auto_forward)],
+    set_forward = GoodConversationHandler(
+                entry_points=[CommandHandler('setautoforward', set_auto_forward)],
 
                 states={
-                    SENDER: [RegexHandler('[a-f0-9]{8}-?[a-f0-9]{4}-?4[a-f0-9]{3}-?[89ab][a-f0-9]{3}-?[a-f0-9]{12}\Z',
-                                          set_sender, pass_user_data=True)],
+                    SENDER: [CustomRegexHandler('[a-f0-9]{8}-?[a-f0-9]{4}-?4[a-f0-9]{3}-?'
+                                                '[89ab][a-f0-9]{3}-?[a-f0-9]{12}\Z',
+                                                set_sender, pass_user_data=True)],
 
-                    RECEIVER: [RegexHandler('[a-f0-9]{8}-?[a-f0-9]{4}-?4[a-f0-9]{3}-?[89ab][a-f0-9]{3}-?[a-f0-9]{12}\Z',
-                                            set_receiver, pass_user_data=True)],
+                    RECEIVER: [CustomRegexHandler('[a-f0-9]{8}-?[a-f0-9]{4}-?4[a-f0-9]{3}-?'
+                                                  '[89ab][a-f0-9]{3}-?[a-f0-9]{12}\Z',
+                                                  set_receiver, pass_user_data=True)],
 
-                    LANGUAGE: [MessageHandler(Filters.text, set_lang, pass_user_data=True)]
+                    LANGUAGE: [MessageHandler(Filters.text, set_lang, pass_user_data=True)],
+
                 },
 
                 fallbacks=[CommandHandler('cancel', cancel, pass_user_data=True)]
             )
+
+    del_forward = GoodConversationHandler(
+        entry_points=[CommandHandler('delautoforward', delete_auto_forwarding)],
+
+        states={
+            DEL_SENDER: [CustomRegexHandler('[a-f0-9]{8}-?[a-f0-9]{4}-?4[a-f0-9]{3}-?'
+                                            '[89ab][a-f0-9]{3}-?[a-f0-9]{12}\Z',
+                                            del_sender, pass_user_data=True)],
+
+            DEL_RECEIVER: [CustomRegexHandler('[a-f0-9]{8}-?[a-f0-9]{4}-?4[a-f0-9]{3}-?'
+                                              '[89ab][a-f0-9]{3}-?[a-f0-9]{12}\Z',
+                                              del_receiver, pass_user_data=True)],
+        },
+
+        fallbacks=[CommandHandler('cancel', cancel, pass_user_data=True)]
+    )
+
     dispatcher.add_handler(MessageHandler((ForwardMessageFilters.added(fd_username) |
                                            ForwardMessageFilters.channel_added), on_add))
     dispatcher.add_handler(CommandHandler('start', start))
-    dispatcher.add_handler(conv_handler)
+    dispatcher.add_handler(CommandHandler('getsecretkey', get_key))
+    dispatcher.add_handler(CommandHandler('help', help_command))
+    dispatcher.add_handler(CommandHandler('rules', rules))
+    dispatcher.add_handler(set_forward)
+    dispatcher.add_handler(del_forward)
     dispatcher.add_handler(MessageHandler(ForwardMessageFilters.text_forwardings, forward_text))
     dispatcher.add_handler(MessageHandler(ForwardMessageFilters.other_forwardings, forward_others))
+    dispatcher.add_handler(MessageHandler(ForwardMessageFilters.removed(fd_username), on_remove))
+    dispatcher.add_handler(MessageHandler(Filters.all, unknown))
     dispatcher.add_error_handler(error)
 
-#
-# from telegram import (ReplyKeyboardMarkup, ReplyKeyboardRemove)
-# from telegram.ext import (Updater, CommandHandler, MessageHandler, Filters, RegexHandler,
-#                           ConversationHandler)
-#
-# import logging
-#
-# # Enable logging
-# logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-#                     level=logging.DEBUG)
-#
-# logger = logging.getLogger(__name__)
-#
-# GENDER, PHOTO, LOCATION, BIO = range(4)
-#
-#
-# def start(bot, update):
-#     reply_keyboard = [['Boy', 'Girl', 'Other']]
-#
-#     update.message.reply_text(
-#         'Hi! My name is Professor Bot. I will hold a conversation with you. '
-#         'Send /cancel to stop talking to me.\n\n'
-#         'Are you a boy or a girl?',
-#         reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True))
-#
-#     return GENDER
-#
-#
-# def gender(bot, update):
-#     user = update.message.from_user
-#     logger.info("Gender of %s: %s" % (user.first_name, update.message.text))
-#     update.message.reply_text('I see! Please send me a photo of yourself, '
-#                               'so I know what you look like, or send /skip if you don\'t want to.',
-#                               reply_markup=ReplyKeyboardRemove())
-#
-#     return PHOTO
-#
-#
-# def photo(bot, update):
-#     user = update.message.from_user
-#     photo_file = bot.getFile(update.message.photo[-1].file_id)
-#     photo_file.download('user_photo.jpg')
-#     logger.info("Photo of %s: %s" % (user.first_name, 'user_photo.jpg'))
-#     update.message.reply_text('Gorgeous! Now, send me your location please, '
-#                               'or send /skip if you don\'t want to.')
-#
-#     return LOCATION
-#
-#
-# def skip_photo(bot, update):
-#     user = update.message.from_user
-#     logger.info("User %s did not send a photo." % user.first_name)
-#     update.message.reply_text('I bet you look great! Now, send me your location please, '
-#                               'or send /skip.')
-#
-#     return LOCATION
-#
-#
-# def location(bot, update):
-#     user = update.message.from_user
-#     user_location = update.message.location
-#     logger.info("Location of %s: %f / %f"
-#                 % (user.first_name, user_location.latitude, user_location.longitude))
-#     update.message.reply_text('Maybe I can visit you sometime! '
-#                               'At last, tell me something about yourself.')
-#
-#     return BIO
-#
-#
-# def skip_location(bot, update):
-#     user = update.message.from_user
-#     logger.info("User %s did not send a location." % user.first_name)
-#     update.message.reply_text('You seem a bit paranoid! '
-#                               'At last, tell me something about yourself.')
-#
-#     return BIO
-#
-#
-# def bio(bot, update):
-#     user = update.message.from_user
-#     logger.info("Bio of %s: %s" % (user.first_name, update.message.text))
-#     update.message.reply_text('Thank you! I hope we can talk again some day.')
-#
-#     return ConversationHandler.END
-#
-#
-# def cancel(bot, update):
-#     user = update.message.from_user
-#     logger.info("User %s canceled the conversation." % user.first_name)
-#     update.message.reply_text('Bye! I hope we can talk again some day.',
-#                               reply_markup=ReplyKeyboardRemove())
-#
-#     return ConversationHandler.END
-#
-#
-# def error(bot, update, error):
-#     logger.warn('Update "%s" caused error "%s"' % (update, error))
-#
-#
-# def register(dispatcher):
-#
-#     conv_handler = ConversationHandler(
-#         entry_points=[CommandHandler('start', start)],
-#
-#         states={
-#             GENDER: [RegexHandler('^(Boy|Girl|Other)$', gender)],
-#
-#             PHOTO: [MessageHandler(Filters.photo, photo),
-#                     CommandHandler('skip', skip_photo)],
-#
-#             LOCATION: [MessageHandler(Filters.location, location),
-#                        CommandHandler('skip', skip_location)],
-#
-#             BIO: [MessageHandler(Filters.text, bio)]
-#         },
-#
-#         fallbacks=[CommandHandler('cancel', cancel)]
-#     )
-#     dispatcher.add_handler(conv_handler)
-#     dispatcher.add_error_handler(error)
-
 # Django Telegram Bot settings
-token = '297704876:AAHiEy-slaktdaSMJfZtcnoDC-4HQYYDNOs'
-mybot = models.Bot.objects.get(token=token)
-mybot.set_dispatcher(register)
+token = settings.SECRETS['bot']['token']
+try:
+    mybot = models.Bot.objects.get(token=token)
+    mybot.set_dispatcher(register)
+except Exception as e:
+    logger.exception('An error occurred while trying to fetch the bot, please ensure that the bot model has'
+                     'been created and you have created a bot with the corresponding token')
+models.set_webhook_url(token, '/forwarder/api/webhook/'+token)

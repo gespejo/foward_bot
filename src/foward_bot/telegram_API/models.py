@@ -18,7 +18,6 @@ from django.db.models.signals import post_save
 from telegram.ext import Dispatcher
 from telegram import Bot as APIBot
 
-from .dispatcher import DjangoDispatcher
 
 logger = logging.getLogger(__file__)
 
@@ -59,7 +58,6 @@ class Bot(models.Model):
 
     def set_dispatcher(self, register):
         api_bot = APIBot(self.token)
-        # dispatcher = DjangoDispatcher(api_bot)
         dispatcher = Dispatcher(api_bot, None)
         register(dispatcher)
         dispatchers[self.token] = dispatcher
@@ -67,10 +65,8 @@ class Bot(models.Model):
     def get_me(self):
         return self._bot
 
-    # def register_handlers(self):
-    #     print("register_handlers() method was called")
-    #     register = import_string(self.register)
-    #     register(self._dispatcher)
+    def set_webhook(self):
+        set_api(Chat, self)
 
     def handle(self, update):
         dispatchers[self.token].process_update(update)
@@ -91,16 +87,20 @@ def set_api(sender, instance, **kwargs):
         instance._bot = APIBot(instance.token)
 
     # set webhook
-    webhook_url = None
+    web_url = None
     cert = None
     if instance.enabled:
-        webhook = reverse('telegram_API:webhook', kwargs={'token': instance.token})
-        webhook_url = 'https://' + instance.site.domain + webhook
-    if instance.ssl_certificate:
-        cert = instance.ssl_certificate.open()
-    instance._bot.setWebhook(webhook_url=webhook_url,
+        if instance.token in webhook_urls:
+            webhook = webhook_urls[instance.token]
+        else:
+            namespace = 'telegram_API:webhook'
+            webhook = reverse(namespace, kwargs={'token': instance.token})
+        web_url = 'https://' + instance.site.domain + webhook
+        if instance.ssl_certificate:
+            cert = instance.ssl_certificate.open()
+    instance._bot.setWebhook(webhook_url=web_url,
                              certificate=cert)
-    logger.info("Success: Webhook url %s for bot %s set" % (webhook_url, str(instance)))
+    logger.info("Success: Web hook url %s for bot %s set" % (web_url, str(instance)))
 
 
 @python_2_unicode_compatible
@@ -140,8 +140,7 @@ class Chat(models.Model):
     first_name = models.CharField(_('First Name'), max_length=255, null=True, blank=True)
     last_name = models.CharField(_('Last Name'), max_length=255, null=True, blank=True)
 
-    # extra_data = JSONField(_('Extra Fields'), models.CharField(max_length=100), null=True, blank=True)
-
+    extra_fields = JSONField(verbose_name='Extra Fields', null=True, blank=True)
 
     class Meta:
         verbose_name = _('Chat')
@@ -160,11 +159,16 @@ class Message(models.Model):
     from_user = models.ForeignKey(User, related_name='messages', verbose_name=_("User"), null=True)
     date = models.DateTimeField(_('Date'))
     chat = models.ForeignKey(Chat, related_name='messages', verbose_name=_("Chat"), null=True)
+    text = models.TextField(null=True, blank=True, verbose_name=_("Text"))
+    edit_date = models.DateTimeField(_('Edit Date'), null=True, blank=True)
+    entities = JSONField(verbose_name=_('Entities'), null=True, blank=True)
+    forward_date = models.DateTimeField(_('Forward Date'), null=True, blank=True)
     forward_from = models.ForeignKey(User, null=True, blank=True, related_name='forwarded_from',
                                      verbose_name=_("Forward from"))
-    text = models.TextField(null=True, blank=True, verbose_name=_("Text"))
+    forward_from_chat = models.ForeignKey(Chat, related_name='forwarded_messages',
+                                          verbose_name=_('Forward From Chat'), null=True, blank=True)
 
-    #  TODO: complete fields with all message fields
+    #  TODO: complete fields with all message fields especially for forwarding fields
 
     class Meta:
         verbose_name = 'Message'
@@ -183,11 +187,14 @@ class Message(models.Model):
 
 
 class Update(models.Model):
-    MESSAGE, CHANNEL_POST = 'message', 'channel_post'
+    MESSAGE, CHANNEL_POST, EDITED_MESSAGE, EDITED_CHANNEL_POST = 'message', 'channel_post', 'edited_message', \
+                                                                 'edited_channel_post',
 
     UPDATE_CHOICES = (
         (MESSAGE, _('Message')),
-        (CHANNEL_POST, _('Channel_post')),
+        (CHANNEL_POST, _('Channel Post')),
+        (MESSAGE, _('Edited Message')),
+        (CHANNEL_POST, _('Edited Channel Post')),
     )
     update_id = models.BigIntegerField(_('Id'), primary_key=True)
     message = models.ForeignKey(Message, null=True, blank=True, verbose_name=_('Message'),
@@ -201,4 +208,10 @@ class Update(models.Model):
     def __str__(self):
         return "%s" % self.update_id
 
+
+def set_webhook_url(token, app_name, **kwargs):
+    webhook_urls[token] = app_name
+
+
 dispatchers = {}
+webhook_urls = {}

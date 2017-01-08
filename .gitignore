@@ -139,7 +139,6 @@ log/
 rsb_ssl/
 
 bin/runserver
-src/vertNews/settings/local.py
 secrets.json
 
 .DS_Store

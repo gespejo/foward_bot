@@ -25,8 +25,8 @@ from django.conf import settings
 
 urlpatterns = [
     url(r'^admin/', admin.site.urls),
-    url(r'^fowarder/api/', include('foward_bot.telegram_API.urls', namespace='api')),
-    url(r'^fowarder/', include('foward_bot.fowarder.urls', namespace='fowarder')),
+    # url(r'^forwarder/api/', include('foward_bot.telegram_API.urls', namespace='api')),
+    url(r'^forwarder/', include('foward_bot.fowarder.urls', namespace='fowarder')),
 ]
 
 if settings.DEBUG:

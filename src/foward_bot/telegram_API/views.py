@@ -20,7 +20,7 @@ from django.views.decorators.csrf import csrf_exempt
 
 from .models import Bot
 from .serializers import BotSerializer, UpdateSerializer, ChannelUpdateSerializer
-from .utils import register_webhooks
+from .utils import postpone
 
 
 logger = logging.getLogger(__name__)
@@ -39,25 +39,38 @@ class TelegramView(APIView):
         return HttpResponse()
 
     def post(self, request, token):
-        serializer = UpdateSerializer(data=request.data)
-        if not serializer.is_valid():
+        self.process_update(request, token)
+        return Response(status=status.HTTP_200_OK)
+
+    @postpone
+    def process_update(self, request, token):
+
+        if 'message' in request.data or 'edited_message' in request.data:
+            serializer = UpdateSerializer(data=request.data)
+        elif 'channel_post' in request.data or 'edited_channel_post' in request.data:
             serializer = ChannelUpdateSerializer(data=request.data)
+        else:
+            logger.info('request contains unsupported telegram update type. It will not be handled')
+            return
         if serializer.is_valid():
             serializer.save()
             try:
                 bot = Bot.objects.get(token=token)
                 bot.handle(APIUpdate.de_json(request.data, APIBot(token)))
-                return Response(status=status.HTTP_200_OK)
+                # return Response(status=status.HTTP_200_OK)
+                return
             except Bot.DoesNotExist:
                 logger.warning("Token %s not associated to a bot" % token)
-                return Response(serializer.errors, status=status.HTTP_404_NOT_FOUND)
+                # return Response(serializer.errors, status=status.HTTP_404_NOT_FOUND)
+
             except:
                 exc_info = sys.exc_info()
                 traceback.print_exception(*exc_info)
                 logger.error("Error processing %s for token %s" % (request.data, token))
-                return Response(serializer.errors, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                # return Response(serializer.errors, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         logger.error("Validation error: %s from message %s" % (serializer.errors, request.data))
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        # return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return
 
 
 class BotViewSet(viewsets.ModelViewSet):
