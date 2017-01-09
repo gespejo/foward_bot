@@ -8,7 +8,7 @@ DEBUG = False
 
 SITE_ID = 3
 
-# ALLOWED_HOSTS = SECRETS['allowed_hosts']['production']
+ALLOWED_HOSTS = SECRETS['allowed_hosts']['production']
 
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
@@ -35,16 +35,10 @@ DATABASES = {
     }
 }
 
-db_from_env = dj_database_url.config(conn_max_age=500)
-DATABASES['default'].update(db_from_env)
-
-
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
-STATIC_ROOT = os.path.join(PROJECT_ROOT, 'staticfiles')
-STATIC_URL = '/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, "static/")
 
-STATICFILES_STORAGE = 'whitenoise.django.GzipManifestStaticFilesStorage'
 
 MESSAGE_TIMEOUTS = {
     'channel': 50,
