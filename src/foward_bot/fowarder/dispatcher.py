@@ -85,9 +85,10 @@ def start(bot, update):
     if get_chat(update).type != models.Chat.CHANNEL:
         if get_chat(update).type != models.Chat.PRIVATE:
             message = 'Hi, My work is to help you forward messages from one chat to ' \
-                      'the other, You can setup auto forwarding using /setAutoForward in a private chat with me. ' \
-                      'To do this you have to get the forwarding secret key from the chat administrators. ' \
-                      'Use /help if you need info on how to set it up'
+                      'another, You can setup auto forwarding using /setAutoForward in a private chat with me. ' \
+                      'To do this you have to get the chat secret key from the chat administrators. ' \
+                      'Use /help if you need info about my commands and /rules to read the /rules'
+
         else:
             message = 'Hi, My work is to help you forward messages from one chat'\
                       ' to the other, This is your secret key for use in forwarding messages'\
@@ -99,36 +100,34 @@ def start(bot, update):
 
 def help_command(bot, update):
     del_update_and_message(update)
-    help_text = 'My major functionality is to set auto forwarding between different chats (including channels) ' \
-                'with the ability of translating the message text into your desired language before forwarding. ' \
-                'Here are a list of my commands: Use\n' \
+    help_text = 'Here are a list of my commands: Use\n' \
                 '/rules to read about the rules of auto forwarding' \
                 '(strongly recommended before setting up forwarding)\n'\
                 '/setautoforward to initiate the process of setting up auto forwarding \n' \
                 '/delautoforward to initiate deletion of an auto forwarding \n'\
                 '/cancel to terminate an ongoing process \n' \
                 '/help to get the list of commands and their descriptions \n' \
-                '/getsecretkey to get the secret key of your private chat with (needed for setting up auto forwarding)'
+                '/getsecretkey to get the secret key of your chat (needed for setting up auto forwarding)'
     bot.send_message(get_message(update).chat_id, text=help_text)
 
 
 def rules(bot, update):
     del_update_and_message(update)
-    forward_rules = 'These are the rules, restrictions and guidelines of setting up auto forwarding: \n\n' \
+    forward_rules =  'These are the rules, restrictions and guidelines of setting up auto forwarding: \n\n' \
                     '1. Forwarding can only be setup in between chats that I have been added in \n'\
                     '2. For security and privacy purposes, people cannot set forwarding from a chat or to a chat ' \
                     'without the permission of at least one of the admins of the chats. For that purpose each ' \
-                    'where I am added has a secret key which will be sent to the admins. The set forwarding, ' \
+                    'chat where I am added has a secret key which will be sent to the admins. To set forwarding, ' \
                     'you need to get the keys of both the sending chat and the receiving chat \n' \
                     '3. As a result of Telegrams\'s privacy policies I cannot send private messages to people ' \
                     'who have not initiated a conversation with me, so I cannot send the secret key to admins who ' \
                     'do not have a private chat with me. It is highly recommended that the admins themselves ' \
                     'add me to the chats and send me a private message before doing that.\n' \
                     '4. For channels, it is a bit tricky. The admins can only receive their secret keys after ' \
-                    'one post have been made from the time I was added \n' \
-                    '5. The only way I can be added in channels is to add me as an admin (general Telegram rule)\n' \
+                    'one post has been made from the time I was added \n' \
+                    '5. The only way to add me to channels is to add me as an admin (general Telegram rule)\n' \
                     '6. Forwarding can only be set to private chats (with me) and not from it \n' \
-                    '7. A chat cannot receive forwarding if it already sending out to another chat ' \
+                    '7. A chat cannot receive forwarding if it is already sending out to another chat ' \
                     '(to prevent circular forwarding and loops)\n' \
                     '8. A chat can receive many forwardings (from more than 1 chat) or send many ' \
                     '(to more than one chat)\n' \
@@ -136,14 +135,14 @@ def rules(bot, update):
                     'support translations to English, Russian, Spanish, Chinese, French, Arabic, German and Hindi. ' \
                     'More will be added later if needed. Of course You can choose `None` to forward ' \
                     'without translations\n' \
-                    '10. An auo forwarding can only be deleted either ny the person who set it up or one ' \
-                    'of the admins of the chats involved' \
+                    '10. An auto forwarding can only be deleted either ny the person who set it up or one ' \
+                    'of the admins of the chats involved\n' \
                     '11. Forwarding can only be setup and deleted in a private chat (else the keys would be leaked)\n'\
-                    '12. If I am added to a chat and an auto forwarding is not set after some number of messages' \
+                    '12. If I am added to a chat and an auto forwarding is not set after some number of messages ' \
                     'I will leave the chat. This is to reduce the workload of having to handle many messages. ' \
                     'You can add me again when you need me. The number of messages are {} for channels, {} for ' \
                     'supergroups and {} for groups \n' \
-                    '13. When all the forwardings a chat is involved in is deleted I will also leave. But again you ' \
+                    '13. When all the forwardings a chat is involved in are deleted I will also leave. But again you ' \
                     'can always add me back to the chat. \n\n' \
                     'That is all for now. I hope you have fun working with me'.format(timeouts[models.Chat.CHANNEL],
                                                                                       timeouts[models.Chat.SUPERGROUP],
@@ -216,8 +215,8 @@ def set_auto_forward(bot, update):
                                'Please give me the secret key of the chat(group, supergroup or channel) '
                                'you want to forward from. '
                                'You can get it from one of the admins if you don\'t have it. Remember I have to be '
-                               'added to the chat '
-                               'one of the administrators to be able to forward messages to and from it.',
+                               'added to the chat (preferably by '
+                               'one of the administrators) to be able to forward messages to and from it.',
                 )
         return SENDER
     return ConversationHandler.END
@@ -234,9 +233,9 @@ def set_sender(bot, update, user_data):
             return SENDER
         if sender.type == models.Chat.PRIVATE:
             reply_message(update,
-                          text="The key you provided belongs to a private chat. Forwarding cannot"
-                               "be set from my users' private chat with me. You can only forward to them"
-                               "please enter another chat's secret key or use /cancel to terminate")
+                          text="The key you provided belongs to a private chat. Forwarding cannot "
+                               "be set from my users' private chat with me. You can only forward to them. "
+                               "please enter another chat's secret key or use /cancel to terminate ")
             return SENDER
         forwardings = AutoForward.objects.filter(receiver=sender)
         if len(forwardings) > 0:
@@ -272,7 +271,7 @@ def set_receiver(bot, update, user_data):
             reply_message(update,
                           text="Unfortunately, the key you provided does not exist, "
                                "please check that the key is correct and that I'm still in the chat. "
-                               "Ask the admins of the chat")
+                               "You can ask the admins of the chat")
             return RECEIVER
         if receiver.id == user_data['sender_id']:
             reply_message(update, text="Oops! The receiving chat cannot be the same as the as the forwarding chat"
@@ -354,7 +353,7 @@ def delete_auto_forwarding(bot, update):
         else:
             reply_message(update,
                           text='Hello! It will just take a few steps to disable the auto forwarding. '
-                               'Remember that you can'
+                               'Remember that you can '
                                'only disable an auto forwarding you setup by yourself or if you are an '
                                'admin in a group '
                                'involved in the auto forwarding. Send /cancel to cancel the process.\n\n'
@@ -423,7 +422,7 @@ def del_receiver(bot, update, user_data):
         if not authorzed:
             reply_message(update,
                           text="Unfortunately you are neither the creator of this auto forwarding "
-                               "or an admin in one of the chats involved. Please Request deactivation from "
+                               "or an admin in one of the chats involved. Please request deactivation from "
                                "the admin or the auto forwarding creator")
             return ConversationHandler.END
         else:
@@ -577,7 +576,7 @@ def get_username(bot, update, user_data):
             return ConversationHandler.END
 
     reply_message(update, text='Oops! This username is not in the list of groups using my service. Are you sure you '
-                               'it is correct? Make sure to remove the @ symbol. You can try entering the'
+                               'it is correct? Make sure to remove the @ symbol. You can try entering the '
                                'username again or use /cancel to quit ')
     return CHAT_USERNAME
 
