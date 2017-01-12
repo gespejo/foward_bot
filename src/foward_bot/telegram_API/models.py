@@ -147,7 +147,9 @@ class Chat(models.Model):
         verbose_name_plural = _('Chats')
 
     def __str__(self):
-        return "%s" % self.id
+        if self.title:
+            return "%s" % self.title
+        return self.first_name
 
     def to_dict(self):
         return model_to_dict(self)

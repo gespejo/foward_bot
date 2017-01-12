@@ -30,10 +30,16 @@ class AutoForward(models.Model):
     enabled = models.BooleanField(_("Status"), default=True)
     creator = models.ForeignKey(User, related_name='creator', verbose_name=_('Forwarding Creator'))
     message_header = models.CharField(_('Message Header'), max_length=100, null=True, blank=True)
+    message_count = models.BigIntegerField(_('Messages Forwarded'), default=0)
     lang = models.CharField(_("Language"), max_length=10, choices=Languages.choices(), default=Languages.NONE)
 
     class Meta:
         unique_together = ('forwarder', 'receiver')
+
+    def __str__(self):
+        return "From {} to {}".format(self.forwarder, self.receiver)
+
+
 
 
 

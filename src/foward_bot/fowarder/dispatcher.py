@@ -2,9 +2,13 @@
 from __future__ import unicode_literals
 
 import logging
+import html
+import copy
+import string
 
 from telegram import error as api_error
 from telegram import Chat as APIChat
+from telegram import MessageEntity
 
 from telegram import (ReplyKeyboardMarkup, ReplyKeyboardRemove)
 from telegram.ext import CommandHandler, MessageHandler, Filters, ConversationHandler
@@ -36,7 +40,51 @@ def escape_markdown(text):
     text = text.replace('_', '\_')
     text = text.replace('*', '\*')
     text = text.replace('`', '\`')
-    return text.replace('```', '```')
+    return text.replace('```', '\```')
+
+
+def parse_escape_html(text, original_entities):
+    entities = copy.deepcopy(original_entities)
+    position = 0
+    new_text = ""
+    escaped = False
+    for char in text:
+        modified = None
+        if char == "&":
+            modified = 3
+            new_text += "&amp"
+            escaped = True
+        if modified:
+            for entity in entities:
+                if entity.offset > position:
+                    entity.offset += modified
+        else:
+            new_text += char
+        position += 1
+    position = 0
+    new_text2 = ""
+    for char in new_text:
+        modified = None
+        if char == "<":
+            modified = 2
+            new_text2 += "&lt"
+            escaped = True
+        elif char == ">":
+            modified = 2
+            new_text2 += "&gt"
+            escaped = True
+        if modified:
+            for entity in entities:
+                if entity.offset > position:
+                    entity.offset += modified
+        else:
+            new_text2 += char
+        position += 1
+    return new_text2, entities, escaped
+
+
+def escape_html(text):
+    return html.escape(text, quote=False)
 
 
 def get_message(update):
@@ -47,6 +95,57 @@ def get_message(update):
     elif update.channel_post:
         return update.channel_post
     return update.edited_channel_post
+
+
+def parse_entities_html(update):
+    original_entities = copy.deepcopy(get_message(update).parse_entities())
+    text, entities, escaped = parse_escape_html(get_message(update).text, original_entities)
+    # text = get_message(update).text
+    for entity in entities:
+        try:
+            modified = None
+            entity_text = entities[entity]
+            position = text.find(entity_text, entity.offset)
+            if position == entity.offset or escaped:
+                before = text[:entity.offset]
+                after = text[entity.offset+entity.length:]
+                if entity.type == MessageEntity.TEXT_LINK:
+                    count = entity.url.count('"')
+                    modified = count*5
+                    count = entity.url.count("'")
+                    modified += count*5
+                    entity.url = entity.url.replace('"', "&quot;")
+                    entity.url = entity.url.replace("'", "&quot;")
+                    text_link = '<a href="{}">{}</a>'.format(entity.url, entity_text)
+                    text = before + text_link + after
+                    modified += 15 + len(entity.url)
+                elif entity.type == MessageEntity.CODE:
+                    code = '<code>{}</code>'.format(entity_text)
+                    text = before + code + after
+                    modified = 13
+                elif entity.type == MessageEntity.BOLD:
+                    bold_text = '<b>{}</b>'.format(entity_text)
+                    text = before + bold_text + after
+                    modified = 7
+                elif entity.type == MessageEntity.ITALIC:
+                    italic_text = '<i>{}</i>'.format(entity_text)
+                    text = before + italic_text + after
+                    modified = 7
+                elif entity.type == MessageEntity.PRE:
+                    pre_code = '<pre>{}</pre>'.format(entity_text)
+                    text = before + pre_code + after
+                    modified = 11
+                if modified:
+                    for other in entities:
+                        if other.offset > entity.offset:
+                            other.offset += modified
+            elif entity.type == MessageEntity.TEXT_LINK:
+                text += '\n<a href="{}">{}</a>'.format(entity.url, entity_text)
+                return text
+        except Exception as ex:
+            logger.error("an error occurred while adding html entities: {}".format(ex.message))
+            text = get_message(update).text
+    return text
 
 
 def get_chat(update):
@@ -62,22 +161,22 @@ def del_update_and_message(update):
         message.delete()
 
 
-def send_message(bot, chat_id, text, **kwargs):
+def send_message(bot, chat_id, text, parse_mode=markdown, **kwargs):
     try:
         bot.send_message(chat_id=chat_id, parse_mode=markdown, text=text, **kwargs)
     except api_error.TelegramError as tg_error:
         logger.info('Probably a wrong markup. Will escape characters and retry send_message. Error: {}'.
                     format(tg_error.message))
-        bot.send_message(chat_id=chat_id, parse_mode=markdown, text=escape_markdown(text), **kwargs)
+        bot.send_message(chat_id=chat_id, parse_mode=parse_mode, text=escape_markdown(text), **kwargs)
 
 
-def reply_message(update, text, **kwargs):
+def reply_message(update, text, parse_mode=markdown, **kwargs):
     try:
         get_message(update).reply_text(text=text, parse_mode=markdown, **kwargs)
     except api_error.TelegramError as tg_error:
         logger.info('Probably a wrong markup. Will escape characters and retry reply_text. Error: {}'.
                     format(tg_error.message))
-        get_message(update).reply_text(text=escape_markdown(text), parse_mode=markdown, **kwargs)
+        get_message(update).reply_text(text=escape_markdown(text), parse_mode=parse_mode, **kwargs)
 
 
 def start(bot, update):
@@ -113,7 +212,7 @@ def help_command(bot, update):
 
 def rules(bot, update):
     del_update_and_message(update)
-    forward_rules =  'These are the rules, restrictions and guidelines of setting up auto forwarding: \n\n' \
+    forward_rules = 'These are the rules, restrictions and guidelines of setting up auto forwarding: \n\n' \
                     '1. Forwarding can only be setup in between chats that I have been added in \n'\
                     '2. For security and privacy purposes, people cannot set forwarding from a chat or to a chat ' \
                     'without the permission of at least one of the admins of the chats. For that purpose each ' \
@@ -319,7 +418,7 @@ def set_lang(bot, update, user_data):
         sender = get_or_none(models.Chat, id=user_data['sender_id'])
         receiver = get_or_none(models.Chat, id=user_data['receiver_id'])
         creator = get_or_none(models.User, id=get_message(update).from_user.id)
-        header = '`Forwarded from {}`'.format(sender.username) if sender.username else \
+        header = '`Forwarded from` @{}'.format(sender.username) if sender.username else \
             '`Forwarded from {}`'.format(sender.title)
         forwarding = AutoForward.objects.create(forwarder=sender, receiver=receiver,
                                                 creator=creator, lang=user_data['language'],
@@ -465,6 +564,7 @@ def del_receiver(bot, update, user_data):
 
 
 def cancel(bot, update, user_data):
+    del_update_and_message(update)
     user_data = {}
     if get_chat(update).type == models.Chat.PRIVATE:
         reply_message(update,
@@ -478,36 +578,52 @@ def forward(bot, forwarding, update):
     bot.forward_message(chat_id=forwarding.receiver.id,
                         from_chat_id=forwarding.forwarder.id,
                         message_id=get_message(update).message_id)
+    forwarding.message_count += 1
+    forwarding.save()
     if forwarding.forwarder.type != models.Chat.CHANNEL:
-        extra_message = str(forwarding.message_header)
+        # extra_message = str(forwarding.message_header)
+        extra_message = '`Forwarded from` @{}'.format(escape_markdown(forwarding.forwarder.username)) if\
+            forwarding.forwarder.username else \
+            '`Forwarded from {}`'.format(escape_markdown(forwarding.forwarder.title))
         send_message(bot, chat_id=forwarding.receiver.id, text=extra_message)
 
 
 def forward_text(bot, update):
     del_update_and_message(update)
+    if get_message(update).edit_date:
+        return
+    translator = Translator()
     forwardings = AutoForward.objects.filter(forwarder__id=get_chat(update).id)
     for forwarding in forwardings:
         if forwarding.enabled:
             if forwarding.lang == Languages.NONE.value:
                 return forward(bot, forwarding, update)
-            translator = Translator()
-            heading = forwarding.message_header
+            heading = '<code>Forwarded from</code> @{}'.format(escape_html(forwarding.forwarder.username)) \
+                if forwarding.forwarder.username else\
+                '<code>Forwarded from {}</code>'.format(escape_html(forwarding.forwarder.title))
+            # heading = forwarding.message_header
             if update.message and update.message.from_user.username:
-                heading = "`By` @{}".format(get_message(update).from_user.username) + "\n" + heading
+                heading = "<code>By</code> @{}".format(get_message(update).from_user.username) + "\n" + heading
             elif update.message:
                 if update.message.from_user.last_name:
-                    heading = "`By {} {}`".format(get_message(update).from_user.first_name,
-                                                  get_message(update).from_user.last_name) + "\n" + heading
+                    heading = "<code>By {} {}</code>".format(get_message(update).from_user.first_name,
+                                                             get_message(update).from_user.last_name) + "\n" + heading
                 else:
-                    heading = "`By {}`".format(get_message(update).from_user.first_name) + "\n" + heading
+                    heading = "<code>By {}</code>".format(get_message(update).from_user.first_name) + "\n" + heading
             heading += '\n\n'
-            text = heading + translator.translate(text=get_message(update).text,
-                                                  lang_to=forwarding.lang)
-            send_message(bot, forwarding.receiver.id, text=text)
+            # heading = escape_html(heading)
+            text = heading + translator.translate(text=parse_entities_html(update),
+                                                  lang_to=forwarding.lang,
+                                                  formatt='html')
+            bot.send_message(forwarding.receiver.id, text=text, parse_mode=HTML)
+            forwarding.message_count += 1
+            forwarding.save()
 
 
 def forward_others(bot, update):
     del_update_and_message(update)
+    if get_message(update).edit_date:
+        return
     forwardings = AutoForward.objects.filter(forwarder__id=get_chat(update).id)
     for forwarding in forwardings:
         if forwarding.enabled:
@@ -609,21 +725,25 @@ def unknown(bot, update):
     del_update_and_message(update)
     try:
         sender = get_or_none(models.Chat, id=get_chat(update).id)
-        if sender.type != models.Chat.PRIVATE and sender.extra_fields['message_counter'] >= timeouts[sender.type]:
-            if sender.type == models.Chat.GROUP or sender.type == models.Chat.SUPERGROUP:
-                send_message(bot, sender.id, text='You have not setup any auto forwarding since you added me, so '
-                                                  'I will leave because I\'m busy serving other chats. Just add me '
-                                                  'back again when you need me (@{}) '.format(fd_username))
-            bot.leave_chat(sender.id)
-            sender.extra_fields['enabled'] = False
-            sender.extra_fields['left'] = True
-            sender.extra_fields['message_counter'] = 0
-            sender.save()
-            logger.info('{} has left the {} {}'.format(fd_username, sender.type, sender.title))
-        elif not get_message(update).left_chat_member or \
-                (get_message(update).left_chat_member and get_message(update).left_chat_member.username != fd_username):
-                sender.extra_fields['message_counter'] += 1
+        forwardings_from = AutoForward.objects.filter(forwarder__id=sender.id)
+        forwardings_to = AutoForward.objects.filter(receiver__id=sender.id)
+        if len(forwardings_from) == 0 and len(forwardings_to) == 0:
+            if sender.type != models.Chat.PRIVATE and sender.extra_fields['message_counter'] >= timeouts[sender.type]:
+                if sender.type == models.Chat.GROUP or sender.type == models.Chat.SUPERGROUP:
+                    send_message(bot, sender.id, text='You have not setup any auto forwarding since you added me, so '
+                                                      'I will leave because I\'m busy serving other chats. Just add me '
+                                                      'back again when you need me (@{}) '.format(fd_username))
+                bot.leave_chat(sender.id)
+                sender.extra_fields['enabled'] = False
+                sender.extra_fields['left'] = True
+                sender.extra_fields['message_counter'] = 0
                 sender.save()
+                logger.info('{} has left the {} {}'.format(fd_username, sender.type, sender.title))
+            elif not get_message(update).left_chat_member or \
+                    (get_message(update).left_chat_member and
+                     get_message(update).left_chat_member.username != fd_username):
+                    sender.extra_fields['message_counter'] += 1
+                    sender.save()
 
     except Exception as ex:
         logger.exception('an error occurred while processing an unknown message from {}: {}'

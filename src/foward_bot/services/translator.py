@@ -24,19 +24,19 @@ class Translator(object):
         return translator.detect(text)
 
     def translate(self, text, lang_to, lang_from=None,
-                  service=TranslatorServices.YANDEX):
+                  service=TranslatorServices.YANDEX, formatt='plain'):
 
         if service == TranslatorServices.YANDEX:
-            return self.__yandex_translate__(text, lang_to, lang_from)
+            return self.__yandex_translate__(text, lang_to, lang_from, formatt)
         return self.__google_translate__(text, lang_to, lang_from)
 
-    def __yandex_translate__(self, text, lang_to, lang_from=None):
+    def __yandex_translate__(self, text, lang_to, lang_from, formatt):
 
         translator = YandexTranslate(self.yandex_api_key)
         if not lang_from:
             lang_from = self.detect_lang(text)
         lang = "{}-{}".format(lang_from, lang_to)
-        translated = translator.translate(text, lang)
+        translated = translator.translate(text, lang,format=formatt)
         return translated['text'][0]
 
     def __google_translate__(self, text, lang_to, lang_from=None):
