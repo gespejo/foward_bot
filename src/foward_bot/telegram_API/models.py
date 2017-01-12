@@ -6,13 +6,11 @@ import logging
 
 from django.db import models
 from django.core.urlresolvers import reverse
-from django.utils.module_loading import import_string
 from django.utils.encoding import python_2_unicode_compatible
 from django.utils.translation import ugettext_lazy as _
 from django.forms.models import model_to_dict
 from django.contrib.postgres.fields import JSONField
 from django.contrib.sites.models import Site
-from django.conf import settings
 from django.dispatch import receiver
 from django.db.models.signals import post_save
 from telegram.ext import Dispatcher
@@ -22,20 +20,10 @@ from telegram import Bot as APIBot
 logger = logging.getLogger(__file__)
 
 
-class BaseModel(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    created_at = models.DateTimeField(_("Date created"), auto_now_add=True)
-    updated_at = models.DateTimeField(_("Date updated"), auto_now=True)
-
-    class Meta:
-        abstract = True
-
-
+@python_2_unicode_compatible
 class Bot(models.Model):
     token = models.CharField(_('Token'), max_length=100, db_index=True)
     register = models.CharField(_('Register'), max_length=1000, blank=True)
-    # user_api = models.OneToOneField(User, verbose_name=_("Bot User"), related_name='bot',
-    #                                 on_delete=models.CASCADE, blank=True, null=True)
     ssl_certificate = models.FileField(_("SSL certificate"), upload_to='telegrambot/ssl/',
                                        blank=True, null=True)
     enabled = models.BooleanField(_('Enable'), default=True)
@@ -54,6 +42,9 @@ class Bot(models.Model):
             self._bot = APIBot(str(self.token))
 
     def __str__(self):
+        return "%s" % self.token
+
+    def __unicode__(self):
         return "%s" % self.token
 
     def set_dispatcher(self, register):
@@ -117,6 +108,9 @@ class User(models.Model):
     def __str__(self):
         return "%s" % self.first_name
 
+    def __unicode__(self):
+        return "%s" % self.first_name
+
     def to_dict(self):
         return model_to_dict(self)
 
@@ -151,6 +145,11 @@ class Chat(models.Model):
             return "%s" % self.title
         return self.first_name
 
+    def __unicode__(self):
+        if self.title:
+            return "%s" % self.title
+        return self.first_name
+
     def to_dict(self):
         return model_to_dict(self)
 
@@ -180,6 +179,9 @@ class Message(models.Model):
     def __str__(self):
         return "(%s,%s,%s)" % (self.message_id, self.chat, self.text or '(no text)')
 
+    def __unicode__(self):
+        return "(%s,%s,%s)" % (self.message_id, self.chat, self.text or '(no text)')
+
     def to_dict(self):
         message_dict = model_to_dict(self, exclude=['from_user', 'chat'])
         message_dict.update({'from_user': self.from_user.to_dict(),
@@ -188,6 +190,7 @@ class Message(models.Model):
         return message_dict
 
 
+@python_2_unicode_compatible
 class Update(models.Model):
     MESSAGE, CHANNEL_POST, EDITED_MESSAGE, EDITED_CHANNEL_POST = 'message', 'channel_post', 'edited_message', \
                                                                  'edited_channel_post',
@@ -208,6 +211,9 @@ class Update(models.Model):
         verbose_name_plural = 'Updates'
 
     def __str__(self):
+        return "%s" % self.update_id
+
+    def __unicode__(self):
         return "%s" % self.update_id
 
 

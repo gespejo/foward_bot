@@ -279,10 +279,14 @@ def on_add(bot, update):
 def on_remove(bot, update):
     del_update_and_message(update)
     chat = get_or_none(models.Chat, id=get_chat(update).id)
-    outgoing = AutoForward.objects.filter(forwarder__id=chat.id)
-    outgoing.delete()
-    incoming = AutoForward.objects.filter(receiver__id=chat.id)
-    incoming.delete()
+    outgoings = AutoForward.objects.filter(forwarder__id=chat.id, enabled=True)
+    for outgoing in outgoings:
+        outgoing.enabled = False
+        outgoing.save()
+    incomings = AutoForward.objects.filter(receiver__id=chat.id, enabled=True)
+    for incoming in incomings:
+        incoming.enabled = False
+        incoming.save()
     if chat.type == models.Chat.PRIVATE:
         user = get_or_none(models.User, id=get_message(update).from_user.id)
         if user:
@@ -336,7 +340,7 @@ def set_sender(bot, update, user_data):
                                "be set from my users' private chat with me. You can only forward to them. "
                                "please enter another chat's secret key or use /cancel to terminate ")
             return SENDER
-        forwardings = AutoForward.objects.filter(receiver=sender)
+        forwardings = AutoForward.objects.filter(receiver=sender, enabled=True)
         if len(forwardings) > 0:
             reply_message(update,
                           text="Unfortunately, this chat is already receiving auto "
@@ -376,7 +380,7 @@ def set_receiver(bot, update, user_data):
             reply_message(update, text="Oops! The receiving chat cannot be the same as the as the forwarding chat"
                                        "please enter the correct secret key")
             return RECEIVER
-        forwardings = AutoForward.objects.filter(forwarder=receiver)
+        forwardings = AutoForward.objects.filter(forwarder=receiver, enabled=True)
         if len(forwardings) > 0:
             reply_message(update,
                           text="Unfortunately, this chat is already sending auto "
@@ -386,7 +390,7 @@ def set_receiver(bot, update, user_data):
                                "use /cancel to terminate the setup. Later you can use /rules to read more "
                                "about the auto forwarding rules")
             return RECEIVER
-        forwardings = AutoForward.objects.filter(receiver=receiver, forwarder__id=user_data['sender_id'])
+        forwardings = AutoForward.objects.filter(receiver=receiver, forwarder__id=user_data['sender_id'], enabled=True)
         if len(forwardings) > 0:
             reply_message(update,
                           text="Oops! There is already an auto forwarding between these two chats. "
@@ -420,9 +424,11 @@ def set_lang(bot, update, user_data):
         creator = get_or_none(models.User, id=get_message(update).from_user.id)
         header = '`Forwarded from` @{}'.format(sender.username) if sender.username else \
             '`Forwarded from {}`'.format(sender.title)
-        forwarding = AutoForward.objects.create(forwarder=sender, receiver=receiver,
-                                                creator=creator, lang=user_data['language'],
-                                                message_header=header)
+        forwarding, _ = AutoForward.objects.update_or_create(forwarder=sender, receiver=receiver,
+                                                             defaults={'creator': creator,
+                                                                       'lang': user_data['language'],
+                                                                       'message_header': header,
+                                                                       'enabled': True})
         if forwarding:
             logger.info('Auto forwarding has been set {} to {}'.format(sender.title, receiver.title))
             user_data = {}
@@ -493,14 +499,20 @@ def del_receiver(bot, update, user_data):
                           text="Unfortunately, the key you provided does not exist, "
                                "please check that the key is correct")
             return DEL_RECEIVER
+        if get_message(update).text == str(sender.identifier):
+            reply_message(update,
+                          text="Wow, wow, easy! The keys of the forwarder and the receiver must be different, "
+                               "please enter the correct key or use /cancel to terminate deletion")
+            return DEL_RECEIVER
         forwarding = get_or_none(AutoForward, forwarder__id=user_data['sender_id'],
-                                 receiver__id=receiver.id)
+                                 receiver__id=receiver.id, enabled=True)
         if not forwarding:
             reply_message(update,
                           text="Oops! There is no auto forwarding set between these two chats, "
-                               "ensure that both have an active auto forwarding and try again later.")
+                               "ensure that both have an active auto forwarding and "
+                               "you have entered the keys in the right order, then try again.")
             return ConversationHandler.END
-        authorzed = False
+        authorized = False
         if forwarding.creator.id != get_message(update).from_user.id:
             api_sender = APIChat(sender.id, sender.type, bot=bot)
             api_receiver = APIChat(receiver.id, receiver.type, bot=bot)
@@ -509,27 +521,28 @@ def del_receiver(bot, update, user_data):
                     if api_receiver.type != models.Chat.PRIVATE:
                         if get_message(update).from_user.id in [admin.user.id for admin in
                                                                 api_receiver.get_administrators()]:
-                            authorzed = True
+                            authorized = True
                     elif api_receiver.id == get_message(update).from_user.id:
-                        authorzed = True
+                        authorized = True
                 else:
-                    authorzed = True
+                    authorized = True
             elif api_sender.id == get_message(update).from_user.id:
-                authorzed = True
+                authorized = True
         else:
-            authorzed = True
-        if not authorzed:
+            authorized = True
+        if not authorized:
             reply_message(update,
                           text="Unfortunately you are neither the creator of this auto forwarding "
                                "or an admin in one of the chats involved. Please request deactivation from "
                                "the admin or the auto forwarding creator")
             return ConversationHandler.END
         else:
-            forwarding.delete()
+            forwarding.enabled = False
+            forwarding.save()
             send_message(bot, get_message(update).chat_id, text="forwarding has been deleted successfully.")
             logger.info("forwarding from {} to {} has been deleted".format(sender.title, receiver.title))
-            forwardings_rec = AutoForward.objects.filter(receiver=receiver)
-            forwardings_send = AutoForward.objects.filter(forwarder=sender)
+            forwardings_rec = AutoForward.objects.filter(receiver=receiver, enabled=True)
+            forwardings_send = AutoForward.objects.filter(forwarder=sender, enabled=True)
             if receiver.type != models.Chat.CHANNEL and receiver.type != models.Chat.PRIVATE:
                 text = 'The auto forwarding from {} to this {} has been deleted, ' \
                        'so I will no longer forward message from there.'.format(sender.title, receiver.type)
@@ -593,41 +606,39 @@ def forward_text(bot, update):
     if get_message(update).edit_date:
         return
     translator = Translator()
-    forwardings = AutoForward.objects.filter(forwarder__id=get_chat(update).id)
+    forwardings = AutoForward.objects.filter(forwarder__id=get_chat(update).id, enabled=True)
     for forwarding in forwardings:
-        if forwarding.enabled:
-            if forwarding.lang == Languages.NONE.value:
-                return forward(bot, forwarding, update)
-            heading = '<code>Forwarded from</code> @{}'.format(escape_html(forwarding.forwarder.username)) \
-                if forwarding.forwarder.username else\
-                '<code>Forwarded from {}</code>'.format(escape_html(forwarding.forwarder.title))
-            # heading = forwarding.message_header
-            if update.message and update.message.from_user.username:
-                heading = "<code>By</code> @{}".format(get_message(update).from_user.username) + "\n" + heading
-            elif update.message:
-                if update.message.from_user.last_name:
-                    heading = "<code>By {} {}</code>".format(get_message(update).from_user.first_name,
-                                                             get_message(update).from_user.last_name) + "\n" + heading
-                else:
-                    heading = "<code>By {}</code>".format(get_message(update).from_user.first_name) + "\n" + heading
-            heading += '\n\n'
-            # heading = escape_html(heading)
-            text = heading + translator.translate(text=parse_entities_html(update),
-                                                  lang_to=forwarding.lang,
-                                                  formatt='html')
-            bot.send_message(forwarding.receiver.id, text=text, parse_mode=HTML)
-            forwarding.message_count += 1
-            forwarding.save()
+        if forwarding.lang == Languages.NONE.value:
+            return forward(bot, forwarding, update)
+        heading = '<code>Forwarded from</code> @{}'.format(escape_html(forwarding.forwarder.username)) \
+            if forwarding.forwarder.username else\
+            '<code>Forwarded from {}</code>'.format(escape_html(forwarding.forwarder.title))
+        # heading = forwarding.message_header
+        if update.message and update.message.from_user.username:
+            heading = "<code>By</code> @{}".format(get_message(update).from_user.username) + "\n" + heading
+        elif update.message:
+            if update.message.from_user.last_name:
+                heading = "<code>By {} {}</code>".format(get_message(update).from_user.first_name,
+                                                         get_message(update).from_user.last_name) + "\n" + heading
+            else:
+                heading = "<code>By {}</code>".format(get_message(update).from_user.first_name) + "\n" + heading
+        heading += '\n\n'
+        # heading = escape_html(heading)
+        text = heading + translator.translate(text=parse_entities_html(update),
+                                              lang_to=forwarding.lang,
+                                              formatt='html')
+        bot.send_message(forwarding.receiver.id, text=text, parse_mode=HTML)
+        forwarding.message_count += 1
+        forwarding.save()
 
 
 def forward_others(bot, update):
     del_update_and_message(update)
     if get_message(update).edit_date:
         return
-    forwardings = AutoForward.objects.filter(forwarder__id=get_chat(update).id)
+    forwardings = AutoForward.objects.filter(forwarder__id=get_chat(update).id, enabled=True)
     for forwarding in forwardings:
-        if forwarding.enabled:
-            forward(bot, forwarding, update)
+        forward(bot, forwarding, update)
 
 CHAT_TYPE, CHAT_USERNAME, CHAT_TITLE = range(11, 14)
 
@@ -725,8 +736,8 @@ def unknown(bot, update):
     del_update_and_message(update)
     try:
         sender = get_or_none(models.Chat, id=get_chat(update).id)
-        forwardings_from = AutoForward.objects.filter(forwarder__id=sender.id)
-        forwardings_to = AutoForward.objects.filter(receiver__id=sender.id)
+        forwardings_from = AutoForward.objects.filter(forwarder__id=sender.id, enabled=True)
+        forwardings_to = AutoForward.objects.filter(receiver__id=sender.id, enabled=True)
         if len(forwardings_from) == 0 and len(forwardings_to) == 0:
             if sender.type != models.Chat.PRIVATE and sender.extra_fields['message_counter'] >= timeouts[sender.type]:
                 if sender.type == models.Chat.GROUP or sender.type == models.Chat.SUPERGROUP:
