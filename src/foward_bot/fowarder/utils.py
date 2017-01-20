@@ -7,6 +7,7 @@ from telegram.ext import RegexHandler
 from foward_bot.telegram_API import models
 from foward_bot.utils.helpers import get_or_none
 from foward_bot.utils.filters import CustomFilters
+from foward_bot.telegram_API.models import Chat
 from .models import AutoForward
 
 
@@ -48,3 +49,10 @@ class CustomRegexHandler(RegexHandler):
         return bool(super(CustomRegexHandler, self).check_update(update) and not
                     update.message.edit_date)
 
+
+def enable_private():
+    chats = Chat.objects.all()
+    for chat in chats:
+        if chat.type == Chat.PRIVATE and not chat.extra_fields['left']:
+            chat.extra_fields['enabled'] = True
+            chat.save()

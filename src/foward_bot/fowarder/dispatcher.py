@@ -4,7 +4,6 @@ from __future__ import unicode_literals
 import logging
 import html
 import copy
-import string
 
 from telegram import error as api_error
 from telegram import Chat as APIChat
@@ -13,15 +12,13 @@ from telegram import MessageEntity
 from telegram import (ReplyKeyboardMarkup, ReplyKeyboardRemove)
 from telegram.ext import CommandHandler, MessageHandler, Filters, ConversationHandler
 from django.conf import settings
-from foward_bot.services.translator import TranslatorServices, Translator
+from foward_bot.services.translator import Translator
 from foward_bot.telegram_API import models
 from foward_bot.utils.custom_classes import GoodConversationHandler
 from foward_bot.utils.helpers import get_or_none
 from .models import AutoForward, Languages
 from .utils import ForwardMessageFilters, CustomRegexHandler
 
-# logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-#                     level=logging.DEBUG)
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +29,6 @@ enabled = 'enabled'
 dev_username = settings.SECRETS['developer']['username']
 
 timeouts = settings.MESSAGE_TIMEOUTS
-
-# TODO: Fix production mode logger to log errors to files and info to console
 
 
 def escape_markdown(text):
@@ -183,18 +178,27 @@ def start(bot, update):
     del_update_and_message(update)
     if get_chat(update).type != models.Chat.CHANNEL:
         if get_chat(update).type != models.Chat.PRIVATE:
+            key = None
             message = 'Hi, My work is to help you forward messages from one chat to ' \
                       'another, You can setup auto forwarding using /setAutoForward in a private chat with me. ' \
                       'To do this you have to get the chat secret key from the chat administrators. ' \
                       'Use /help if you need info about my commands and /rules to read the /rules'
-
         else:
+            chat = get_or_none(models.Chat, id=get_chat(update).id)
+            if not chat:
+                return error(bot, update, "private chat not created after /start")
             message = 'Hi, My work is to help you forward messages from one chat'\
-                      ' to the other, This is your secret key for use in forwarding messages'\
-                      ' to my chat with you: {}. Use /help if you forget anything '\
-                      .format(get_or_none(models.Chat, id=get_chat(update).id).identifier)
+                      ' to the other. Use /help if you forget anything.\n' \
+                      'This is your secret key for use in forwarding messages'\
+                      ' to my chat with you.'
+            key = chat.identifier
+            if not chat.extra_fields['enabled']:
+                chat.extra_fields['enabled'] = True
+                chat.save()
 
         send_message(bot, get_message(update).chat_id, text=message)
+        if key:
+            send_message(bot, get_message(update).chat_id, text="{}".format(key))
 
 
 def help_command(bot, update):
@@ -207,7 +211,7 @@ def help_command(bot, update):
                 '/cancel to terminate an ongoing process \n' \
                 '/help to get the list of commands and their descriptions \n' \
                 '/getsecretkey to get the secret key of your chat (needed for setting up auto forwarding)'
-    bot.send_message(get_message(update).chat_id, text=help_text)
+    send_message(bot, get_message(update).chat_id, text=help_text)
 
 
 def rules(bot, update):
@@ -267,13 +271,15 @@ def on_add(bot, update):
                                  admin.user.id,
                                  text='Hello, I was added to the {}: `{}` where you are an admin. '
                                       'For security purposes I only allow forwarding from groups '
-                                      'if one of the admins approve of it. This is the secret key '
-                                      'of your {}: {}. It will enable users to set forwarding to '
+                                      'if one of the admins approve of it. The next message contains the secret key '
+                                      'of your {}. It will enable users to set forwarding to '
                                       'and from your {}. Only give this key to those you have '
                                       'allowed to do so. Have a nice day:)'
                                       .format(group_type, chat.title,
-                                              group_type, chat.identifier,
+                                              group_type,
                                               group_type))
+
+                    send_message(bot, admin.user.id, text="{}".format(chat.identifier))
 
 
 def on_remove(bot, update):
@@ -313,7 +319,7 @@ def set_auto_forward(bot, update):
         else:
             reply_message(update,
                           text='Hello! It is good you want to set up auto forwarding. I hope you have read the rules '
-                               'with /rules. If not please read them before starting the setup'
+                               'with /rules. If not please read them before starting the setup. '
                                'Send /cancel to terminate the process.\n\n'
                                'Please give me the secret key of the chat(group, supergroup or channel) '
                                'you want to forward from. '
@@ -352,7 +358,7 @@ def set_sender(bot, update, user_data):
             return SENDER
 
         user_data['sender_id'] = sender.id
-        reply_message(update, text="Great!, now enter the secret key of the chat(user, group, supergroup or "
+        reply_message(update, text="Great! now enter the secret key of the chat(user, group, supergroup or "
                                    "channel) you want me to forward the messages to.")
         return RECEIVER
     except Exception as ex:
@@ -669,8 +675,9 @@ def get_chat_type(bot, update, user_data):
     if user_data['chat_type'] == 'private chat':
         chat = get_or_none(models.Chat, id=get_chat(update).id)
         if chat:
-            reply_message(update, text='The secret key for this chat is {}'.format(chat.identifier),
+            reply_message(update, text='The secret key for this chat is:',
                           reply_markup=ReplyKeyboardRemove())
+            send_message(bot, get_message(update).chat_id, text='{}'.format(chat.identifier))
             return ConversationHandler.END
     if user_data['chat_type'] == 'public supergroup or public channel':
         reply_message(update, text='Awesome! now enter the username of your public channel or supergroup '
@@ -693,7 +700,8 @@ def get_username(bot, update, user_data):
         api_chat = APIChat(chat.id, chat.type, bot=bot)
         if get_message(update).from_user.id in [admin.user.id for admin in
                                                 api_chat.get_administrators()]:
-            reply_message(update, text='The secret key for your chat is {}'.format(chat.identifier))
+            reply_message(update, text='The secret key for your chat is:')
+            send_message(bot, get_message(update).chat_id, text='{}'.format(chat.identifier))
             if not chat.extra_fields[enabled]:
                 chat.extra_fields[enabled] = True
             return ConversationHandler.END
@@ -717,7 +725,8 @@ def get_title(bot, update, user_data):
         api_chat = APIChat(chat.id, chat.type, bot=bot)
         if get_message(update).from_user.id in [admin.user.id for admin in
                                                 api_chat.get_administrators()]:
-            reply_message(update, text='Lucky! The secret key for your chat is {}'.format(chat.identifier))
+            reply_message(update, text='Lucky! The secret key for your chat is:')
+            send_message(bot, get_message(update).chat_id, text='{}'.format(chat.identifier))
             if not chat.extra_fields[enabled]:
                 chat.extra_fields[enabled] = True
             return ConversationHandler.END
@@ -786,7 +795,8 @@ def register(dispatcher):
 
                 },
 
-                fallbacks=[CommandHandler('cancel', cancel, pass_user_data=True)]
+                fallbacks=[CommandHandler('cancel', cancel, pass_user_data=True)],
+                allow_reentry=True
             )
 
     get_secret_key = GoodConversationHandler(
@@ -801,7 +811,8 @@ def register(dispatcher):
 
         },
 
-        fallbacks=[CommandHandler('cancel', cancel, pass_user_data=True)]
+        fallbacks=[CommandHandler('cancel', cancel, pass_user_data=True)],
+        allow_reentry=True
     )
 
     del_forward = GoodConversationHandler(
@@ -817,7 +828,8 @@ def register(dispatcher):
                                               del_receiver, pass_user_data=True)],
         },
 
-        fallbacks=[CommandHandler('cancel', cancel, pass_user_data=True)]
+        fallbacks=[CommandHandler('cancel', cancel, pass_user_data=True)],
+        allow_reentry=True
     )
 
     dispatcher.add_handler(MessageHandler((ForwardMessageFilters.added(fd_username) |
@@ -840,6 +852,6 @@ try:
     mybot = models.Bot.objects.get(token=token)
     mybot.set_dispatcher(register)
 except Exception as e:
-    logger.exception('An error occurred while trying to fetch the bot, please ensure that the bot model has'
+    logger.exception('An error occurred while trying to fetch the bot, please ensure that the bot model has '
                      'been created and you have created a bot with the corresponding token')
 models.set_webhook_url(token, '/forwarder/api/webhook/'+token)
