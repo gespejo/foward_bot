@@ -38,7 +38,8 @@ class ForwardMessageFilters(CustomFilters):
             return bool(len(forwardings) > 0 and not message.text and (message.audio or message.document or
                                                                        message.photo or message.sticker or
                                                                        message.video or message.contact or
-                                                                       message.location or message.venue))
+                                                                       message.location or message.venue or
+                                                                       message.voice))
 
     other_forwardings = _OtherForwardings()
 
