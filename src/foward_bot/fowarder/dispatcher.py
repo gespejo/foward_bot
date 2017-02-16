@@ -599,16 +599,16 @@ def forward(bot, forwarding, update):
                         message_id=get_message(update).message_id)
     forwarding.message_count += 1
     forwarding.save()
-    if forwarding.forwarder.type != models.Chat.CHANNEL:
-        # extra_message = str(forwarding.message_header)
-        extra_message = '`Forwarded from` @{}'.format(escape_markdown(forwarding.forwarder.username)) if\
-            forwarding.forwarder.username else \
-            '`Forwarded from {}`'.format(escape_markdown(forwarding.forwarder.title))
-        send_message(bot, chat_id=forwarding.receiver.id, text=extra_message)
+    # if forwarding.forwarder.type != models.Chat.CHANNEL:
+    #     # extra_message = str(forwarding.message_header)
+    #     extra_message = '`Forwarded from` @{}'.format(escape_markdown(forwarding.forwarder.username)) if\
+    #         forwarding.forwarder.username else \
+    #         '`Forwarded from {}`'.format(escape_markdown(forwarding.forwarder.title))
+    #     send_message(bot, chat_id=forwarding.receiver.id, text=extra_message)
 
 
 def forward_text(bot, update):
-    del_update_and_message(update)
+    # del_update_and_message(update)
     if get_message(update).edit_date:
         return
     translator = Translator()
@@ -639,7 +639,7 @@ def forward_text(bot, update):
 
 
 def forward_others(bot, update):
-    del_update_and_message(update)
+    # del_update_and_message(update)
     if get_message(update).edit_date:
         return
     forwardings = AutoForward.objects.filter(forwarder__id=get_chat(update).id, enabled=True)
