@@ -26,7 +26,7 @@ class ForwardMessageFilters(CustomFilters):
     class _TextForwardings(BaseFilter):
 
         def filter(self, message):
-            forwardings = AutoForward.objects.filter(forwarder__id=message.chat.id)
+            forwardings = AutoForward.objects.filter(forwarder__id=message.chat.id, enabled=True)
             return len(forwardings) > 0 and message.text and not message.text.startswith('/')
 
     text_forwardings = _TextForwardings()
@@ -34,7 +34,7 @@ class ForwardMessageFilters(CustomFilters):
     class _OtherForwardings(BaseFilter):
 
         def filter(self, message):
-            forwardings = AutoForward.objects.filter(forwarder__id=message.chat.id)
+            forwardings = AutoForward.objects.filter(forwarder__id=message.chat.id, enabled=True)
             return bool(len(forwardings) > 0 and not message.text and (message.audio or message.document or
                                                                        message.photo or message.sticker or
                                                                        message.video or message.contact or
