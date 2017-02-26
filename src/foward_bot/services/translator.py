@@ -3,6 +3,7 @@ from __future__ import unicode_literals
 
 import goslate
 from yandex_translate import YandexTranslate
+from yandex_translate import YandexTranslateException
 from django.conf import settings
 
 from foward_bot.utils.helpers import SimpleEnum
@@ -33,11 +34,14 @@ class Translator(object):
     def __yandex_translate__(self, text, lang_to, lang_from, formatt):
 
         translator = YandexTranslate(self.yandex_api_key)
-        if not lang_from:
-            lang_from = self.detect_lang(text)
-        lang = "{}-{}".format(lang_from, lang_to)
-        translated = translator.translate(text, lang,format=formatt)
-        return translated['text'][0]
+        try:
+            if not lang_from:
+                lang_from = self.detect_lang(text)
+            lang = "{}-{}".format(lang_from, lang_to)
+            translated = translator.translate(text, lang,format=formatt)
+            return translated['text'][0]
+        except YandexTranslateException:
+            return text
 
     def __google_translate__(self, text, lang_to, lang_from=None):
 
