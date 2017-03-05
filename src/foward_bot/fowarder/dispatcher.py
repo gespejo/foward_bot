@@ -156,9 +156,22 @@ def del_update_and_message(update):
         message.delete()
 
 
+def disable_chat(chat_id):
+    try:
+        chat = models.Chat.objects.get(chat_id=chat_id)
+        chat.extra_fields['message_counter'] = 0
+        chat.extra_fields[enabled] = False
+        chat.extra_fields['left'] = True
+        chat.save()
+    except Exception as e:
+        logger.error("Could not disable chat {}. Error: {}".format(chat_id, e))
+
+
 def send_message(bot, chat_id, text, parse_mode=markdown, **kwargs):
     try:
         bot.send_message(chat_id=chat_id, parse_mode=markdown, text=text, **kwargs)
+    except api_error.Unauthorized:
+        disable_chat(chat_id)
     except api_error.TelegramError as tg_error:
         logger.info('Probably a wrong markup. Will escape characters and retry send_message. Error: {}'.
                     format(tg_error.message))
@@ -298,10 +311,7 @@ def on_remove(bot, update):
         if user:
             user.delete()
     logger.info('{} has been removed from the {} {}'.format(fd_username, chat.type, chat.title))
-    chat.extra_fields['message_counter'] = 0
-    chat.extra_fields[enabled] = False
-    chat.extra_fields['left'] = True
-    chat.save()
+    disable_chat(chat.id)
     # chat.delete()
 
 # AUTO FOWARDING
@@ -560,18 +570,12 @@ def del_receiver(bot, update, user_data):
             if receiver.type != models.Chat.PRIVATE:
                 if len(forwardings_rec) == 0:
                     bot.leave_chat(receiver.id)
-                    receiver.extra_fields['left'] = True
-                    receiver.extra_fields['enabled'] = False
-                    sender.extra_fields['message_counter'] = 0
-                    receiver.save()
+                    disable_chat(receiver.id)
                     logger.info('{} has left the {} {}'.format(fd_username, receiver.type, receiver.title))
                     # receiver.delete()
                 if len(forwardings_send) == 0:
                     bot.leave_chat(sender.id)
-                    sender.extra_fields['left'] = True
-                    sender.extra_fields['enabled'] = False
-                    sender.extra_fields['message_counter'] = 0
-                    sender.save()
+                    disable_chat(sender.id)
                     logger.info('{} has left the {} {}'.format(fd_username, receiver.type, receiver.title))
                     # sender.delete()
             user_data = {}
@@ -717,7 +721,7 @@ def get_username(bot, update, user_data):
 
 
 def get_title(bot, update, user_data):
-    del_update_and_message(update)
+    # del_update_and_message(update)
     chat_type = user_data['chat_type'].split(' ')
     chats = models.Chat.objects.filter(title=get_message(update).text, type=chat_type[1])
     if chats and len(chats) == 1 and not chats.first().extra_fields['left']:
@@ -742,7 +746,7 @@ def get_title(bot, update, user_data):
 
 
 def unknown(bot, update):
-    del_update_and_message(update)
+    # del_update_and_message(update)
     try:
         sender = get_or_none(models.Chat, id=get_chat(update).id)
         forwardings_from = AutoForward.objects.filter(forwarder__id=sender.id, enabled=True)
@@ -754,10 +758,7 @@ def unknown(bot, update):
                                                       'I will leave because I\'m busy serving other chats. Just add me '
                                                       'back again when you need me (@{}) '.format(fd_username))
                 bot.leave_chat(sender.id)
-                sender.extra_fields['enabled'] = False
-                sender.extra_fields['left'] = True
-                sender.extra_fields['message_counter'] = 0
-                sender.save()
+                disable_chat(sender.id)
                 logger.info('{} has left the {} {}'.format(fd_username, sender.type, sender.title))
             elif not get_message(update).left_chat_member or \
                     (get_message(update).left_chat_member and
