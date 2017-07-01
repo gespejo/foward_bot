@@ -79,6 +79,7 @@ def set_api(sender, instance, **kwargs):
 
     # set webhook
     web_url = None
+    # cert = '../certs/YOURPUBLIC.pem'
     cert = None
     if instance.enabled:
         if instance.token in webhook_urls:
@@ -88,8 +89,9 @@ def set_api(sender, instance, **kwargs):
             webhook = reverse(namespace, kwargs={'token': instance.token})
         web_url = 'https://' + instance.site.domain + webhook
         if instance.ssl_certificate:
-            cert = instance.ssl_certificate.open()
-    instance._bot.setWebhook(webhook_url=web_url,
+            cert = instance.ssl_certificate.file
+    instance._bot.set_webhook()
+    instance._bot.setWebhook(url=web_url,
                              certificate=cert)
     logger.info("Success: Web hook url %s for bot %s set" % (web_url, str(instance)))
 
@@ -203,7 +205,7 @@ class Update(models.Model):
     )
     update_id = models.BigIntegerField(_('Id'), primary_key=True)
     message = models.ForeignKey(Message, null=True, blank=True, verbose_name=_('Message'),
-                                related_name="updates")
+                                related_name="updates", on_delete=models.CASCADE)
     update_type = models.CharField(_('Update Type'), max_length=20, choices=UPDATE_CHOICES, default=MESSAGE)
 
     class Meta:

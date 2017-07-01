@@ -21,13 +21,24 @@ def get_chat(update):
     return update.channel_post.chat
 
 
+class StatusFilters(object):
+
+    class _ChatMigrate(BaseFilter):
+
+        def filter(self, message):
+            return bool(message.migrate_from_chat_id)
+
+    migrate = _ChatMigrate()
+
+
 class ForwardMessageFilters(CustomFilters):
 
     class _TextForwardings(BaseFilter):
 
         def filter(self, message):
             forwardings = AutoForward.objects.filter(forwarder__id=message.chat.id, enabled=True)
-            return len(forwardings) > 0 and message.text and not message.text.startswith('/')
+            return len(forwardings) > 0 and (message.text and not message.text.startswith('/') or
+                                             message.caption)
 
     text_forwardings = _TextForwardings()
 
@@ -39,7 +50,7 @@ class ForwardMessageFilters(CustomFilters):
                                                                        message.photo or message.sticker or
                                                                        message.video or message.contact or
                                                                        message.location or message.venue or
-                                                                       message.voice))
+                                                                       message.voice or message.video_note))
 
     other_forwardings = _OtherForwardings()
 

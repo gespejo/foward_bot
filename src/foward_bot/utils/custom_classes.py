@@ -3,7 +3,7 @@ from __future__ import unicode_literals
 
 from telegram import Update
 from telegram.ext import ConversationHandler
-from telegram.utils.helpers import extract_chat_and_user
+# from telegram.utils.helpers import
 from telegram.utils.promise import Promise
 
 
@@ -14,7 +14,9 @@ class GoodConversationHandler(ConversationHandler):
         if not isinstance(update, Update):
             return False
 
-        chat, user = extract_chat_and_user(update)
+        chat = update.effective_chat
+        user = update.effective_user
+        # chat, user = extract_chat_and_user(update)
         if not user:
             return False
 

@@ -17,7 +17,7 @@ from foward_bot.telegram_API import models
 from foward_bot.utils.custom_classes import GoodConversationHandler
 from foward_bot.utils.helpers import get_or_none
 from .models import AutoForward, Languages
-from .utils import ForwardMessageFilters, CustomRegexHandler
+from .utils import ForwardMessageFilters, CustomRegexHandler, StatusFilters
 
 
 logger = logging.getLogger(__name__)
@@ -158,7 +158,7 @@ def del_update_and_message(update):
 
 def disable_chat(chat_id):
     try:
-        chat = models.Chat.objects.get(chat_id=chat_id)
+        chat = models.Chat.objects.get(id=chat_id)
         chat.extra_fields['message_counter'] = 0
         chat.extra_fields[enabled] = False
         chat.extra_fields['left'] = True
@@ -167,10 +167,38 @@ def disable_chat(chat_id):
         logger.error("Could not disable chat {}. Error: {}".format(chat_id, e))
 
 
+def migrate_chat(old_chat_id, new_chat_id):
+    try:
+        new_chat = get_or_none(models.Chat, id=new_chat_id)
+        if new_chat:
+            new_chat.delete()
+            models.Message.objects.filter(chat__id=new_chat.id).delete()
+        chat = models.Chat.objects.get(id=old_chat_id)
+        chat.id = new_chat_id
+        logger.debug(chat.id)
+        chat.type = chat.SUPERGROUP
+        old_chat = models.Chat.objects.get(id=old_chat_id)
+        AutoForward.objects.filter(forwarder__id=chat.id).update(forwarder=chat)
+        AutoForward.objects.filter(receiver__id=chat.id).update(receiver=chat)
+        models.Message.objects.filter(chat__id=chat.id).update(chat=chat)
+        old_chat.delete()
+        chat.save()
+        # AutoForward.objects.filter(forwarder__id=chat.id).update(forwarder=chat)
+        # AutoForward.objects.filter(receiver__id=chat.id).update(receiver=chat)
+        # models.Message.objects.filter(chat__id=chat.id).update(chat=chat)
+    except Exception as e:
+        logger.error("Could not migrate chat from {} to {}. Error: {}".format(old_chat_id, new_chat_id, e))
+
+
 def send_message(bot, chat_id, text, parse_mode=markdown, **kwargs):
     try:
-        bot.send_message(chat_id=chat_id, parse_mode=markdown, text=text, **kwargs)
+        bot.send_message(chat_id=chat_id, parse_mode=parse_mode, text=text, **kwargs)
+    except api_error.ChatMigrated as tg_error:
+        migrate_chat(chat_id, tg_error.new_chat_id)
+        bot.send_message(chat_id=chat_id, parse_mode=parse_mode, text=text, **kwargs)
     except api_error.Unauthorized:
+        logger.info("Sending message to chat {} is unauthorized. chat will be disabled"
+                    .format(chat_id))
         disable_chat(chat_id)
     except api_error.TelegramError as tg_error:
         logger.info('Probably a wrong markup. Will escape characters and retry send_message. Error: {}'.
@@ -178,9 +206,54 @@ def send_message(bot, chat_id, text, parse_mode=markdown, **kwargs):
         bot.send_message(chat_id=chat_id, parse_mode=parse_mode, text=escape_markdown(text), **kwargs)
 
 
+def send_photo(bot, chat_id, photo, caption=None, **kwargs):
+    try:
+        bot.send_photo(chat_id=chat_id, photo=photo, caption=caption, **kwargs)
+    except api_error.ChatMigrated as tg_error:
+        migrate_chat(chat_id, tg_error.new_chat_id)
+        bot.send_photo(chat_id=chat_id, photo=photo, caption=caption, **kwargs)
+    except api_error.Unauthorized:
+        logger.info("Sending message to chat {} is unauthorized. chat will be disabled"
+                    .format(chat_id))
+        disable_chat(chat_id)
+    except api_error.TelegramError as tg_error:
+        logger.info('Could not send photo to chat {}. Error: {}'.
+                    format(chat_id, tg_error.message))
+
+
+def send_video(bot, chat_id, video, caption=None, **kwargs):
+    try:
+        bot.send_video(chat_id=chat_id, video=video, caption=caption, **kwargs)
+    except api_error.ChatMigrated as tg_error:
+        migrate_chat(chat_id, tg_error.new_chat_id)
+        bot.send_video(chat_id=chat_id, video=video, caption=caption, **kwargs)
+    except api_error.Unauthorized:
+        logger.info("Sending message to chat {} is unauthorized. chat will be disabled"
+                    .format(chat_id))
+        disable_chat(chat_id)
+    except api_error.TelegramError as tg_error:
+        logger.info('Could not send video to chat {}. Error: {}'.
+                    format(chat_id, tg_error.message))
+
+
+def send_document(bot, chat_id, document, caption=None, **kwargs):
+    try:
+        bot.send_document(chat_id=chat_id, document=document, caption=caption, **kwargs)
+    except api_error.ChatMigrated as tg_error:
+        migrate_chat(chat_id, tg_error.new_chat_id)
+        bot.send_document(chat_id=chat_id, document=document, caption=caption, **kwargs)
+    except api_error.Unauthorized:
+        logger.info("Sending message to chat {} is unauthorized. chat will be disabled"
+                    .format(chat_id))
+        disable_chat(chat_id)
+    except api_error.TelegramError as tg_error:
+        logger.info('Could not send document to chat {}. Error: {}'.
+                    format(chat_id, tg_error.message))
+
+
 def reply_message(update, text, parse_mode=markdown, **kwargs):
     try:
-        get_message(update).reply_text(text=text, parse_mode=markdown, **kwargs)
+        get_message(update).reply_text(text=text, parse_mode=parse_mode, **kwargs)
     except api_error.TelegramError as tg_error:
         logger.info('Probably a wrong markup. Will escape characters and retry reply_text. Error: {}'.
                     format(tg_error.message))
@@ -598,11 +671,16 @@ def cancel(bot, update, user_data):
 
 
 def forward(bot, forwarding, update):
-    bot.forward_message(chat_id=forwarding.receiver.id,
-                        from_chat_id=forwarding.forwarder.id,
-                        message_id=get_message(update).message_id)
-    forwarding.message_count += 1
-    forwarding.save()
+    try:
+        bot.forward_message(chat_id=forwarding.receiver.id,
+                            from_chat_id=forwarding.forwarder.id,
+                            message_id=get_message(update).message_id)
+        forwarding.message_count += 1
+        forwarding.save()
+    except api_error.Unauthorized:
+        logger.info("Sending message to chat {} is unauthorized. chat will be disabled"
+                    .format(forwarding.receiver.id))
+        disable_chat(forwarding.receiver.id)
     # if forwarding.forwarder.type != models.Chat.CHANNEL:
     #     # extra_message = str(forwarding.message_header)
     #     extra_message = '`Forwarded from` @{}'.format(escape_markdown(forwarding.forwarder.username)) if\
@@ -634,10 +712,27 @@ def forward_text(bot, update):
                 heading = "<code>By {}</code>".format(get_message(update).from_user.first_name) + "\n" + heading
         heading += '\n\n'
         # heading = escape_html(heading)
-        text = heading + translator.translate(text=parse_entities_html(update),
-                                              lang_to=forwarding.lang,
-                                              formatt='html')
-        bot.send_message(forwarding.receiver.id, text=text, parse_mode=HTML)
+        if update.message.caption:
+            caption = translator.translate(text=update.message.caption,
+                                           lang_to=forwarding.lang,
+                                           formatt='html')
+            if update.message.photo:
+                send_photo(bot, chat_id=forwarding.receiver.id,
+                           photo=update.message.photo[0].file_id,
+                           caption=caption)
+            elif update.message.video:
+                send_video(bot, chat_id=forwarding.receiver.id,
+                           video=update.message.video.file_id,
+                           caption=caption)
+            elif update.message.document:
+                send_document(bot, chat_id=forwarding.receiver.id,
+                              document=update.message.document.file_id,
+                              caption=caption)
+        else:
+            text = heading + translator.translate(text=parse_entities_html(update),
+                                                  lang_to=forwarding.lang,
+                                                  formatt='html')
+            send_message(bot, chat_id=forwarding.receiver.id, text=text, parse_mode=HTML)
         forwarding.message_count += 1
         forwarding.save()
 
@@ -651,6 +746,15 @@ def forward_others(bot, update):
         forward(bot, forwarding, update)
 
 CHAT_TYPE, CHAT_USERNAME, CHAT_TITLE = range(11, 14)
+
+
+def upgrade_chat(bot, update):
+    message = get_message(update)
+    try:
+        migrate_chat(message.migrate_from_chat_id, get_chat(update).id)
+    except Exception as ex:
+        logger.exception('an error occurred while trying to upgrade the chat {}: {}'
+                         .format(get_chat(update).id, ex.message))
 
 
 def get_key(bot, update, user_data):
@@ -747,6 +851,7 @@ def get_title(bot, update, user_data):
 
 def unknown(bot, update):
     # del_update_and_message(update)
+    # logger.debug()
     try:
         sender = get_or_none(models.Chat, id=get_chat(update).id)
         forwardings_from = AutoForward.objects.filter(forwarder__id=sender.id, enabled=True)
@@ -838,6 +943,7 @@ def register(dispatcher):
     dispatcher.add_handler(CommandHandler('start', start))
     dispatcher.add_handler(CommandHandler('help', help_command))
     dispatcher.add_handler(CommandHandler('rules', rules))
+    dispatcher.add_handler(MessageHandler(StatusFilters.migrate, upgrade_chat))
     dispatcher.add_handler(set_forward)
     dispatcher.add_handler(get_secret_key)
     dispatcher.add_handler(del_forward)

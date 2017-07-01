@@ -42,6 +42,7 @@ _thread = threading.Thread(target=_worker)
 _thread.daemon = True
 _thread.start()
 
+
 def _cleanup():
     _queue.join()   # so we don't exit too soon
 

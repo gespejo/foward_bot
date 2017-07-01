@@ -13,17 +13,6 @@ ALLOWED_HOSTS = SECRETS['allowed_hosts']['production']
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 
-# SECURE_SSL_REDIRECT = False
-#
-#
-# INSTALLED_APPS.append("sslserver")
-# INSTALLED_APPS.append('debug_toolbar')
-# MIDDLEWARE_CLASSES.insert(
-#         MIDDLEWARE_CLASSES.index('django.middleware.common.CommonMiddleware') + 1,
-#         'debug_toolbar.middleware.DebugToolbarMiddleware',
-#     )
-
-
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql_psycopg2',

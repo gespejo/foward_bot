@@ -10,7 +10,7 @@ from .helpers import get_or_none
 logger = logging.getLogger(__name__)
 
 
-class CustomFilters:
+class CustomFilters(object):
     """
     Custom defined filters for use with the `filter` argument of :class:`telegram.ext.MessageHandler`.
     """
