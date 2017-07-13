@@ -712,21 +712,22 @@ def forward_text(bot, update):
                 heading = "<code>By {}</code>".format(get_message(update).from_user.first_name) + "\n" + heading
         heading += '\n\n'
         # heading = escape_html(heading)
-        if update.message.caption:
-            caption = translator.translate(text=update.message.caption,
+        message = get_message(update)
+        if message and message.caption:
+            caption = translator.translate(text=message.caption,
                                            lang_to=forwarding.lang,
                                            formatt='html')
-            if update.message.photo:
+            if message.photo:
                 send_photo(bot, chat_id=forwarding.receiver.id,
-                           photo=update.message.photo[0].file_id,
+                           photo=message.photo[0].file_id,
                            caption=caption)
-            elif update.message.video:
+            elif message.video:
                 send_video(bot, chat_id=forwarding.receiver.id,
-                           video=update.message.video.file_id,
+                           video=message.video.file_id,
                            caption=caption)
-            elif update.message.document:
+            elif message.document:
                 send_document(bot, chat_id=forwarding.receiver.id,
-                              document=update.message.document.file_id,
+                              document=message.document.file_id,
                               caption=caption)
         else:
             text = heading + translator.translate(text=parse_entities_html(update),
