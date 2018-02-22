@@ -828,7 +828,7 @@ def get_username(bot, update, user_data):
 def get_title(bot, update, user_data):
     # del_update_and_message(update)
     chat_type = user_data['chat_type'].split(' ')
-    chats = models.Chat.objects.filter(title=get_message(update).text, type=chat_type[1])
+    chats = models.Chat.objects.filter(title=get_message(update).text, type=chat_type[0])
     if chats and len(chats) == 1 and not chats.first().extra_fields['left']:
         chat = chats.first()
         api_chat = APIChat(chat.id, chat.type, bot=bot)
