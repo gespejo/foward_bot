@@ -85,7 +85,7 @@ def set_api(sender, instance, **kwargs):
         if instance.token in webhook_urls:
             webhook = webhook_urls[instance.token]
         else:
-            namespace = 'telegram_API:webhook'
+            namespace = 'telegram_api:webhook'
             webhook = reverse(namespace, kwargs={'token': instance.token})
         web_url = 'https://' + instance.site.domain + webhook
         if instance.ssl_certificate:
