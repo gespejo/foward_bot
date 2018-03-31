@@ -347,25 +347,24 @@ def on_add(bot, update):
     chat.save()
     if chat.type != models.Chat.PRIVATE:
         for admin in api_chat.get_administrators():
-            if not admin.user.username.endswith('bot'):
-                if get_or_none(models.User, id=admin.user.id):
-                    if not chat.extra_fields['enabled']:
-                        chat.extra_fields['enabled'] = True
-                        chat.save()
-                    group_type = api_chat.type
-                    send_message(bot,
-                                 admin.user.id,
-                                 text='Hello, I was added to the {}: `{}` where you are an admin. '
-                                      'For security purposes I only allow forwarding from groups '
-                                      'if one of the admins approve of it. The next message contains the secret key '
-                                      'of your {}. It will enable users to set forwarding to '
-                                      'and from your {}. Only give this key to those you have '
-                                      'allowed to do so. Have a nice day:)'
-                                      .format(group_type, chat.title,
-                                              group_type,
-                                              group_type))
+            if get_or_none(models.User, id=admin.user.id):
+                if not chat.extra_fields['enabled']:
+                    chat.extra_fields['enabled'] = True
+                    chat.save()
+                group_type = api_chat.type
+                send_message(bot,
+                             admin.user.id,
+                             text='Hello, I was added to the {}: `{}` where you are an admin. '
+                                  'For security purposes I only allow forwarding from groups '
+                                  'if one of the admins approve of it. The next message contains the secret key '
+                                  'of your {}. It will enable users to set forwarding to '
+                                  'and from your {}. Only give this key to those you have '
+                                  'allowed to do so. Have a nice day:)'
+                                  .format(group_type, chat.title,
+                                          group_type,
+                                          group_type))
 
-                    send_message(bot, admin.user.id, text="{}".format(chat.identifier))
+                send_message(bot, admin.user.id, text="{}".format(chat.identifier))
 
 
 def on_remove(bot, update):
