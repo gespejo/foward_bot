@@ -697,7 +697,8 @@ def forward_text(bot, update):
     forwardings = AutoForward.objects.filter(forwarder__id=get_chat(update).id, enabled=True)
     for forwarding in forwardings:
         if forwarding.lang == Languages.NONE.value:
-            return forward(bot, forwarding, update)
+            forward(bot, forwarding, update)
+            continue
         heading = '<code>Forwarded from</code> @{}'.format(escape_html(forwarding.forwarder.username)) \
             if forwarding.forwarder.username else\
             '<code>Forwarded from {}</code>'.format(escape_html(forwarding.forwarder.title))
