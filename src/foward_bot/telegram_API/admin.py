@@ -12,7 +12,12 @@ class ChatAdmin(admin.ModelAdmin):
     search_fields = ('title', 'username', 'first_name', 'last_name')
 
 
-admin.site.register(User)
+class UserAdmin(admin.ModelAdmin):
+    list_display = ('username', 'first_name', 'last_name')
+    search_fields = ('username', 'first_name', 'last_name')
+
+
+admin.site.register(User, UserAdmin)
 admin.site.register(Update)
 admin.site.register(Bot)
 admin.site.register(Message)
