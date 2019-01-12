@@ -21,7 +21,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('enabled', models.BooleanField(default=True, verbose_name='Status')),
-                ('lang', models.CharField(choices=[(b'ar', b'ARABIC'), (b'zh', b'CHINESE'), (b'en', b'ENGLISH'), (b'fr', b'FRENCH'), (b'None', b'NONE'), (b'ru', b'RUSSIAN'), (b'es', b'SPANISH')], default=foward_bot.fowarder.models.Languages('None'), max_length=4, verbose_name='Language')),
+                ('lang', models.CharField(choices=[(b'ar', b'ARABIC'), (b'zh', b'CHINESE'), (b'en', b'ENGLISH'), (b'fr', b'FRENCH'), (b'it', b'ITALIAN'), (b'None', b'NONE'), (b'ru', b'RUSSIAN'), (b'es', b'SPANISH')], default=foward_bot.fowarder.models.Languages('None'), max_length=4, verbose_name='Language')),
                 ('forwarder', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='forwarder', to='telegram_API.Chat', verbose_name='Forwarder')),
                 ('receiver', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='receiver', to='telegram_API.Chat', verbose_name='Receiver')),
             ],

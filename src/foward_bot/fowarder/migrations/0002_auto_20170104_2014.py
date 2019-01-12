@@ -16,6 +16,6 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='autoforward',
             name='lang',
-            field=models.CharField(choices=[(b'ar', b'ARABIC'), (b'zh', b'CHINESE'), (b'en', b'ENGLISH'), (b'fr', b'FRENCH'), (b'None', b'NONE'), (b'ru', b'RUSSIAN'), (b'es', b'SPANISH')], default=foward_bot.fowarder.models.Languages('None'), max_length=10, verbose_name='Language'),
+            field=models.CharField(choices=[(b'ar', b'ARABIC'), (b'zh', b'CHINESE'), (b'en', b'ENGLISH'), (b'fr', b'FRENCH'),  (b'it', b'ITALIAN'), (b'None', b'NONE'), (b'ru', b'RUSSIAN'), (b'es', b'SPANISH')], default=foward_bot.fowarder.models.Languages('None'), max_length=10, verbose_name='Language'),
         ),
     ]

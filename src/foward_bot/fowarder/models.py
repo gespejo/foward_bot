@@ -23,6 +23,7 @@ class Languages(SimpleEnum):
     ARABIC = 'ar'
     GERMAN = 'de'
     HINDI = 'hi'
+    ITALIAN = 'it'
 
 
 @python_2_unicode_compatible
