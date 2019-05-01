@@ -404,12 +404,12 @@ def set_auto_forward(bot, update):
                           text='Hello! It is good you want to set up auto forwarding. I hope you have read the rules '
                                'with /rules. If not please read them before starting the setup. '
                                'Send /cancel to terminate the process.\n\n'
-                               'Please give me the secret key of the chat(group, supergroup or channel) '
+                               'Please give me the secret key of the channel '
                                'you want to forward from. '
                                'You can get it from one of the admins if you don\'t have it. Remember I have to be '
-                               'added to the chat (preferably by '
+                               'added to the channel (by '
                                'one of the administrators) to be able to forward messages to and from it.',
-                )
+                         )
         return SENDER
     return ConversationHandler.END
 
@@ -423,6 +423,12 @@ def set_sender(bot, update, user_data):
                           text="The key you provided does not exist, "
                                "please check that it is correct and I am still in the chat")
             return SENDER
+        if sender.type != models.Chat.CHANNEL:
+            reply_message(update,
+                          text="Sorry, I now only forward from channels to prevent spamming and getting banned. "
+                               "Please enter a channel's secret key or use /cancel to terminate ")
+            return SENDER
+
         if sender.type == models.Chat.PRIVATE:
             reply_message(update,
                           text="The key you provided belongs to a private chat. Forwarding cannot "
