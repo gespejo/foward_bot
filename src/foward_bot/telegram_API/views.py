@@ -57,20 +57,14 @@ class TelegramView(APIView):
             try:
                 bot = Bot.objects.get(token=token)
                 bot.handle(APIUpdate.de_json(request.data, APIBot(token)))
-                # return Response(status=status.HTTP_200_OK)
                 return
             except Bot.DoesNotExist:
                 logger.warning("Token %s not associated to a bot" % token)
-                # return Response(serializer.errors, status=status.HTTP_404_NOT_FOUND)
-
             except:
                 exc_info = sys.exc_info()
                 traceback.print_exception(*exc_info)
                 logger.error("Error processing %s for token %s" % (request.data, token))
-                # return Response(serializer.errors, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         logger.error("Validation error: %s from message %s" % (serializer.errors, request.data))
-        # return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        return
 
 
 class BotViewSet(viewsets.ModelViewSet):

@@ -3,6 +3,8 @@ from __future__ import unicode_literals
 
 import logging
 
+from rest_framework.response import Response
+
 from foward_bot.telegram_API import models as api_models
 from foward_bot.telegram_API.views import TelegramView
 
@@ -22,7 +24,7 @@ class ForwarderView(TelegramView):
         elif 'edited_channel_post' in request.data:
             request.data['edited_channel_post']['chat']['extra_fields'] = extra_fields
         else:
-            logger.info('request contains unsupported telegram update type. It will not be handled')
-            return
+            logger.info('request contains unsupported telegram update type. It will not be handled: {}'.format(request.data))
+            return Response()
         return super(ForwarderView, self).post(request, token)
 
